@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "HotMic — Microphone Sharing for Google Meet",
+  "short_name": "HotMic",
+  "version": "1.1.0",
+  "description": "Coordinates Google Meet microphone ownership between people in the same room. Controls Meet's mute state only; never transmits audio.",
+  "minimum_chrome_version": "111",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqGcozCHyfDFhgPK/5P+LNfezvRwREIWjUus002O8fCwSfhXJi2l+TUhuk8a9VMusHJx8JnWd8uZfes7L46oNjXkZd242M6cAq8Lc9Xebo+ZGgLph5/T558TWA20G0BFx0tifO3CSZo2LZ+zq+KbaMtGwtwMIGIBwDlxn0QmG3Bs3JlyHy5EW8feHVizzP/VdyMGoYe6m0KU06WFtEtWh6CjqJLnMuIzOH2oNJBr2mlztX7Xi0g4sw5Y4H5InYUTQemLKb5hPstwKXAc27lzcC8rAS8n7N50F9DlqkvRi24hEu9txD4CS5R+adj6PxRhw0nn5A8Y32sTVnx0OSUCt2wIDAQAB",
+  "permissions": [
+    "storage",
+    "nativeMessaging",
+    "scripting",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "https://meet.google.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Microphone Sharing",
+    "default_popup": "src/popup/popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://meet.google.com/*"
+      ],
+      "js": [
+        "src/content/page-probe.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://meet.google.com/*"
+      ],
+      "js": [
+        "src/content/meet-adapter.js",
+        "src/content/overlay.js",
+        "src/content/content.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
+}

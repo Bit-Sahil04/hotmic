@@ -1,0 +1,16 @@
+{
+  "name": "hotmic",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Chrome extension that coordinates Google Meet microphone ownership between people in the same room.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "smoke": "node tools/browser-smoke.mjs",
+    "smoke:webrtc": "node tools/browser-webrtc-smoke.mjs",
+    "rendezvous": "node rendezvous/server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
