@@ -16,7 +16,10 @@
 //   * Owner LEASE: members ack our heartbeats; the owner fences itself (mutes and
 //     releases) LEASE_SAFETY_MARGIN_MS before any member could expire it.
 //   * Observers expire an owner not heard for LEASE_TIMEOUT_MS (new epoch, no owner).
-//   * Transfer to a requester only after MIN_OWNERSHIP_MS, and (briefly) deferred
+//   * Transfer to a requester only after the minimum-hold floor — shorter
+//     (MIN_OWNERSHIP_IDLE_MS) if the owner has been silent since acquiring the mic,
+//     full (MIN_OWNERSHIP_ACTIVE_MS) if they talked or activity is unknown — and
+//     (briefly) deferred
 //     while the owner shows browser-reported audio activity.
 
 import { StateMachine } from '../shared/fsm.js';
@@ -247,12 +250,18 @@ export class OwnershipManager {
         && p.unmutedSince !== null && now - p.unmutedSince > cfg.UNMUTED_CONFLICT_GRACE_MS);
       if (conflict) return this._relinquish(now, `${conflict.name} is also unmuted`, { involuntary: true });
 
-      const held = now - this.ownerSince;
-      if (held < cfg.MIN_OWNERSHIP_MS) return;
       const req = this._pickRequester(now);
       if (!req) return;
-      const eligibleAt = Math.max(this.ownerSince + cfg.MIN_OWNERSHIP_MS, req.wantSince);
       const act = this.hooks.activity(now);
+      const held = now - this.ownerSince;
+      // Meet's own WebRTC stats say the owner never spoke during this hold (and the
+      // signal is fresh) => a waiting requester may take over early. Unknown or
+      // stale activity, or any speech, keeps the full floor.
+      const floor = act.known && act.idleMs >= held
+        ? cfg.MIN_OWNERSHIP_IDLE_MS
+        : cfg.MIN_OWNERSHIP_ACTIVE_MS;
+      if (held < floor) return;
+      const eligibleAt = Math.max(this.ownerSince + floor, req.wantSince);
       const idle = !act.known || act.idleMs >= cfg.ACTIVITY_IDLE_MS;
       if (idle || now - eligibleAt >= cfg.ACTIVITY_MAX_DEFER_MS) {
         this._relinquish(now, `microphone transferred to ${req.name}`, { to: req, involuntary: true });

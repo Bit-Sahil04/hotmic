@@ -13,7 +13,8 @@ export const CONFIG = Object.freeze({
   SYNC_MS: 1500,                 // must listen this long before claiming / declaring expiry
 
   // ---- Ownership -----------------------------------------------------------
-  MIN_OWNERSHIP_MS: 5000,        // owner cannot be pre-empted before this
+  MIN_OWNERSHIP_ACTIVE_MS: 5000, // owner talked during this hold (or activity unknown) => full protection
+  MIN_OWNERSHIP_IDLE_MS: 2000,   // owner silent since acquiring => requester may take over this early
   CLAIM_TIMEOUT_MS: 2000,        // claim not agreed within this => abandon
   CLAIM_RETRY_BACKOFF_MS: 500,
   CLAIM_RESEND_MS: 250,          // re-broadcast pending claim this often

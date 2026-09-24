@@ -215,10 +215,12 @@ agreement instead of unanimous agreement (a V2 topic).
   silent owner after `LEASE_TIMEOUT_MS` (3 s) → `NO_OWNER` → next request can acquire. The owner is
   always muted before anyone else could claim.
 * **Minimum ownership.** A request never pre-empts an owner who has held the mic for less than
-  `MIN_OWNERSHIP_MS` (5 s). After that, the owner transfers to the longest-waiting requester
-  (epoch + 1). If Meet's WebRTC stats show outgoing audio activity, the transfer waits until the
-  owner is idle (`ACTIVITY_IDLE_MS`), for at most `ACTIVITY_MAX_DEFER_MS`. A voluntary release
-  hands the mic straight to a waiting requester.
+  the minimum-hold floor. The floor is `MIN_OWNERSHIP_ACTIVE_MS` (5 s) if the owner has spoken
+  during the hold — or if activity is unknown/stale (conservative) — and `MIN_OWNERSHIP_IDLE_MS`
+  (2 s) if Meet's WebRTC stats show the owner never spoke since acquiring the mic. After the
+  floor, the owner transfers to the longest-waiting requester (epoch + 1). If the owner is
+  still talking, the transfer waits until they are idle (`ACTIVITY_IDLE_MS`), for at most
+  `ACTIVITY_MAX_DEFER_MS`. A voluntary release hands the mic straight to a waiting requester.
 * A pre-empted user's intent is cleared (PTT needs a new press; toggle turns OFF), so there is no
   ping-pong.
 * **Joining late.** A device must listen for `SYNC_MS` before it may claim, so a late joiner
@@ -285,7 +287,7 @@ npm run smoke:webrtc   # two real Chrome instances + local rendezvous server, ov
   links, clean and crashed master hand-off, server outages, and forged/replayed signalling.
 * `tools/browser-webrtc-smoke.mjs` runs two separate Chrome profiles (two "laptops") with no
   helper. It checks: A becomes master; B listens, finds A and is prompted; B joins as member (one
-  master on the server); PTT on A unmutes only A; B's request inside A's 5 s is held; release hands
+  master on the server); PTT on A unmutes only A; B's request inside A's minimum hold is held; release hands
   over to B; the server never saw names or the meeting code.
 
 * `test/protocol.test.js` runs the real session code on a simulated LAN with latency, jitter,
@@ -317,7 +319,7 @@ npm run smoke:webrtc   # two real Chrome instances + local rendezvous server, ov
 | 6–8 | Prompt, join alone, decline | `consent.js`, overlay, popup · protocol tests |
 | 9–11 | PTT / toggle acquire + release | `input.js`, `ownership.js` · tests + smoke |
 | 12–13 | Single owner, others muted | agreement rule · simultaneous/lossy tests |
-| 14–15 | No transfer < 5 s, transfer after | `MIN_OWNERSHIP_MS` · tests |
+| 14–15 | No transfer < floor (5 s talked / 2 s silent), transfer after | `MIN_OWNERSHIP_*_MS` · tests |
 | 16 | Debounce | `input.js` · repeat/bounce/rapid-toggle tests |
 | 17 | Manual mute/unmute reconciled | `mic.js`, `ownership.onMicExternal` · tests + smoke |
 | 18–19 | Lease expiry, fail closed | lease/fencing · disconnect/partition/sleep/transport tests |

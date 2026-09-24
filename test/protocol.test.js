@@ -257,7 +257,7 @@ test('owner audio activity defers an eligible transfer, bounded by ACTIVITY_MAX_
   expectSafe(w);
 });
 
-test('idle owner (activity known, silent) transfers right after 5 s', () => {
+test('idle owner (activity known, silent since acquiring) transfers after the short floor', () => {
   const w = new World();
   const a = w.add('sahil', { join: true, mode: 'toggle' });
   w.add('samir', { join: true });
@@ -266,7 +266,30 @@ test('idle owner (activity known, silent) transfers right after 5 s', () => {
   w.run(300);
   const quiet = setIntervalSim(w, () => a.session.onActivity(0.0), 200);
   w.pttDown('samir');
-  w.run(5200);
+  w.run(1500);                   // held < 2 s
+  assert.deepEqual(w.owners(), ['sahil'], 'short floor still protects the first 2 s');
+  w.run(1000);                   // silent the whole hold => 2 s floor
+  assert.deepEqual(w.owners(), ['samir']);
+  assert.ok(true);
+  quiet.stop();
+});
+
+test('owner who talked during the hold keeps the full 5 s floor', () => {
+  const w = new World();
+  const a = w.add('sahil', { join: true, mode: 'toggle' });
+  w.add('samir', { join: true });
+  settle(w);
+  w.tap('sahil');
+  w.run(300);
+  // Talk at the very start of the hold, then go quiet.
+  const speak = setIntervalSim(w, () => a.session.onActivity(0.3), 200);
+  w.run(600);
+  speak.stop();
+  const quiet = setIntervalSim(w, () => a.session.onActivity(0.0), 200);
+  w.pttDown('samir');
+  w.run(3000);                   // held ~4 s: talked during hold => full floor
+  assert.deepEqual(w.owners(), ['sahil']);
+  w.run(1600);                   // past 5 s, idle => transfer
   assert.deepEqual(w.owners(), ['samir']);
   quiet.stop();
 });
