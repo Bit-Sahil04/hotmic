@@ -34,3 +34,14 @@ li .state.bad { color: var(--warn); }
 .owner-line { font-weight: 600; }
 .warn { color: var(--warn); margin-top: 4px; }
 [hidden] { display: none !important; }
+
+.row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.row h2 { margin: 0; }
+button.icon {
+  width: 18px; height: 18px; padding: 0; border-radius: 50%;
+  border: 1px solid var(--line); background: none; color: var(--muted);
+  font-size: 11px; line-height: 1; cursor: pointer; flex: none;
+}
+button.icon:hover { color: var(--fg); border-color: var(--muted); }
+#discovery-help { margin-top: 6px; line-height: 1.45; }
+#discovery-help b, #discovery-help code { color: var(--fg); }

@@ -42,13 +42,16 @@ function onMessage(msg) {
   else if (msg.type === 'send' && typeof msg.data === 'string') send(msg.data);
 }
 
+// '' = built-in discovery service (DEFAULT_DISCOVERY_URL); 'off' = WebRTC
+// discovery disabled; otherwise a custom rendezvous server URL.
 function configure(nextUrl, wanted) {
+  const active = nextUrl !== 'off';
   const urlChanged = nextUrl !== url;
   url = nextUrl;
   for (const [meetingId, r] of rooms) {
-    if (!wanted.includes(meetingId) || urlChanged || !url) stopRoom(meetingId, r);
+    if (!wanted.includes(meetingId) || urlChanged || !active) stopRoom(meetingId, r);
   }
-  if (url) for (const meetingId of wanted) if (!rooms.has(meetingId)) startRoom(meetingId);
+  if (active) for (const meetingId of wanted) if (!rooms.has(meetingId)) startRoom(meetingId);
   pushStatus();
 }
 
@@ -61,7 +64,8 @@ function startRoom(meetingId) {
     entry.roomTag = rc.roomTag;
     entry.mesh = new RoomMesh({
       selfId, clock, config: CONFIG,
-      signal: new SignalClient(entry.url, rc.roomTag),
+      // '' (built-in) resolves to our rendezvous deployment; custom URL passes through.
+      signal: new SignalClient(entry.url || CONFIG.DEFAULT_DISCOVERY_URL, rc.roomTag),
       seal: (obj) => rc.seal(obj),
       open: (env) => rc.open(env),
       createPeer: createRtcPeer,

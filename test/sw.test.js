@@ -54,6 +54,13 @@ test('service worker: Meet tab session, local-only join, PTT command round-trip,
   const chrome = installChromeMock();
   await import('../src/background/service-worker.js');
 
+  // Turn the built-in WebRTC discovery off: this test exercises local-only mode.
+  const setup = makePortPair('hotmic-popup', {});
+  chrome.runtime.onConnect.fire(setup);
+  setup.onMessage.fire({ type: 'subscribe', tabId: 7 });
+  setup.onMessage.fire({ type: 'settings', patch: { discoveryUrl: 'off' } });
+  await sleep(30);
+
   const meet = makePortPair('hotmic-meet', { tab: { id: 7 }, frameId: 0 });
   chrome.runtime.onConnect.fire(meet);
   meet.onMessage.fire({ type: 'hello', pageId: 'p1' });
@@ -101,28 +108,38 @@ test('service worker: Meet tab session, local-only join, PTT command round-trip,
   meet.onDisconnect.fire();
 });
 
-test('service worker: WebRTC discovery option — URL validation, offscreen mesh, status + data routing', async () => {
+test('service worker: WebRTC discovery option — built-in cloud default, URL validation, offscreen mesh, status + data routing', async () => {
   const chrome = globalThis.chrome;
+  // Reset to the built-in provider (test 1 left 'off' in the shared storage mock).
+  const setup = makePortPair('hotmic-popup', {});
+  chrome.runtime.onConnect.fire(setup);
+  setup.onMessage.fire({ type: 'subscribe', tabId: 8 });
+  setup.onMessage.fire({ type: 'settings', patch: { discoveryUrl: '' } });
+  await sleep(30);
+
   const meet = makePortPair('hotmic-meet', { tab: { id: 8 }, frameId: 0 });
   chrome.runtime.onConnect.fire(meet);
   meet.onMessage.fire({ type: 'hello', pageId: 'p2' });
   meet.onMessage.fire({ type: 'meet', href: 'https://meet.google.com/xyz-abcd-efg', inCall: true, mic: 'MUTED', cause: 'initial' });
   await sleep(100);
-  assert.equal(last(meet, 'state').snapshot.localOnly, true, 'neither helper nor discovery server => local only');
+  // Built-in cloud is the default: the offscreen document starts with the session.
+  assert.equal(chrome.offscreen.created.length, 1, 'built-in provider starts with the session');
+  assert.deepEqual(chrome.offscreen.created[0].reasons, ['WEB_RTC']);
+  assert.equal(last(meet, 'state').snapshot.transport, 'connecting');
+  assert.equal(last(meet, 'state').snapshot.localOnly, false, 'not local-only while discovery is still connecting');
 
   const popup = makePortPair('hotmic-popup', {});
   chrome.runtime.onConnect.fire(popup);
   popup.onMessage.fire({ type: 'subscribe', tabId: 8 });
   popup.onMessage.fire({ type: 'settings', patch: { discoveryUrl: 'javascript:alert(1)' } });
   await sleep(30);
-  assert.equal(last(popup, 'state').settings.discoveryUrl, '', 'non-http URL rejected');
-  assert.equal(chrome.offscreen.created.length, 0);
+  assert.equal(last(popup, 'state').settings.discoveryUrl, '', 'non-http URL rejected (falls back to built-in)');
+  assert.equal(chrome.offscreen.created.length, 1);
 
   popup.onMessage.fire({ type: 'settings', patch: { discoveryUrl: ' http://localhost:8787/ ' } });
   await sleep(30);
   assert.equal(last(popup, 'state').settings.discoveryUrl, 'http://localhost:8787');
-  assert.equal(chrome.offscreen.created.length, 1);
-  assert.deepEqual(chrome.offscreen.created[0].reasons, ['WEB_RTC']);
+  assert.equal(chrome.offscreen.created.length, 1, 'document is reused for the new provider');
   assert.equal(last(popup, 'state').transport.webrtc.state, 'connecting');
 
   // Offscreen document connects; must come from our offscreen page.

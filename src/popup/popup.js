@@ -41,9 +41,14 @@ $('discovery-url').addEventListener('change', () => {
   $('discovery-url-error').hidden = ok;
   if (ok) { urlDirty = false; settingsPatch({ discoveryUrl: v }); }
 });
+$('discovery-info').addEventListener('click', () => {
+  const help = $('discovery-help');
+  help.hidden = !help.hidden;
+});
 
 function validUrl(v) {
-  if (!v) return true;
+  if (!v) return true;                 // built-in PeerJS cloud
+  if (/^off$/i.test(v)) return true;   // WebRTC discovery disabled
   try {
     const u = new URL(v);
     return ['https:', 'http:'].includes(u.protocol) && !u.username && !u.password && !u.search && !u.hash;
@@ -101,13 +106,14 @@ function helperLine(h) {
 }
 
 function webrtcLine(w) {
-  if (!w.configured) return 'WebRTC: off (no discovery server set)';
+  if (w.off) return 'WebRTC: off';
+  const label = w.builtin ? 'WebRTC (built-in cloud)' : 'WebRTC (your server)';
   switch (w.state) {
-    case 'up': return `WebRTC: connected${w.role === 'master' ? ' · master' : ''} · ${w.peers} nearby link${w.peers === 1 ? '' : 's'}`;
-    case 'connecting': return 'WebRTC: connecting…';
-    case 'lost': return 'WebRTC: connection lost';
-    case 'unavailable': return `WebRTC: ${w.error || 'unavailable'}`;
-    default: return 'WebRTC: idle';
+    case 'up': return `${label}: connected${w.role === 'master' ? ' · master' : ''} · ${w.peers} nearby link${w.peers === 1 ? '' : 's'}`;
+    case 'connecting': return `${label}: connecting…`;
+    case 'lost': return `${label}: connection lost`;
+    case 'unavailable': return `${label}: ${w.error || 'unavailable'}`;
+    default: return `${label}: idle`;
   }
 }
 

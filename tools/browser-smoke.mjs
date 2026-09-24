@@ -126,7 +126,14 @@ try {
   await cdp('Page.navigate', { url: `chrome-extension://${EXT_ID}/src/popup/popup.html?tabId=${tabId}` }, pop);
   const meetingText = await waitUntil(() => evaluate(pop, `document.getElementById('meeting-id')?.textContent`), 'popup meeting id');
   check('meeting detected + id extracted', meetingText === 'abc-defg-hij', meetingText);
-  const statusText = await evaluate(pop, `document.getElementById('status').textContent`);
+  // This scenario is local-only: turn the built-in WebRTC discovery off first.
+  await evaluate(pop, `(() => { const el = document.getElementById('discovery-url'); el.value = 'off'; el.dispatchEvent(new Event('change')); })()`);
+  await waitUntil(() => evaluate(pop, `document.getElementById('discovery-url-error').hidden`), 'discovery setting');
+  let statusText = '';
+  await waitUntil(async () => {
+    statusText = await evaluate(pop, `document.getElementById('status').textContent`);
+    return /Local only/.test(statusText);
+  }, 'local-only status').catch(() => {});
   check('local-only mode when LAN helper is not installed', /Local only/.test(statusText), statusText);
 
   await evaluate(pop, `document.getElementById('join').click()`);

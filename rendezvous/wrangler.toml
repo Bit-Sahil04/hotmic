@@ -1,0 +1,13 @@
+# HotMic rendezvous (built-in WebRTC discovery provider).
+# Deploy:  cd rendezvous && npx wrangler deploy
+# Then set DEFAULT_DISCOVERY_URL in src/shared/config.js to the workers.dev URL.
+name = "hotmic-rendezvous"
+main = "worker.mjs"
+compatibility_date = "2024-12-01"
+
+[durable_objects]
+bindings = [{ name = "HOTMIC_ROOMS", class_name = "Room" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]

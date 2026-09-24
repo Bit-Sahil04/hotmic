@@ -22,6 +22,9 @@ export class RoomMesh {
   /**
    * @param {object} o
    * @param {string} o.selfId
+   * @param {string} [o.alias] routing id of this room's master slot (deterministic
+   *                            providers like the PeerJS cloud); the master also accepts
+   *                            sealed signalling addressed to it, and members link to it.
    * @param {{now():number, wallNow?():number, setTimeout:Function, clearTimeout:Function}} o.clock
    * @param {{masters():Promise<string[]>, register(id):Promise<string[]>, unregister(id):Promise<void>,
    *          post(to,from,data):Promise<void>, take(id,waitS,abortSignal):Promise<{from,data}[]>}} o.signal
@@ -35,6 +38,7 @@ export class RoomMesh {
    */
   constructor(o) {
     this.selfId = o.selfId;
+    this.alias = o.alias || null;
     this.clock = o.clock;
     this.wallNow = o.clock.wallNow || (() => Date.now());
     this.signal = o.signal;
@@ -176,7 +180,14 @@ export class RoomMesh {
         if (ID.test(id) && id > this.selfId && !this.links.has(id) && !this._backedOff(id)) this._connectTo(id, SERVER);
       }
     } catch (err) {
-      this._serverDown(err);
+      const msg = String(err && err.message || err);
+      if (this.alias && /id-taken/i.test(msg)) {
+        // Lost the master-slot race (deterministic providers): fall back to member.
+        this._stepDown();
+        if (!this.links.has(this.alias) && !this._backedOff(this.alias)) this._connectTo(this.alias, SERVER);
+      } else {
+        this._serverDown(err);
+      }
     }
     this._emit();
   }
@@ -216,6 +227,7 @@ export class RoomMesh {
 
   async _connectTo(id, via) {
     if (!this.running || id === this.selfId || this.links.has(id) || this.links.size >= this.cfg.RTC_MAX_PEERS) return;
+    if (this.alias && id === this.alias && (this.role === 'master' || this.registered)) return; // that's us
     const link = this._newLink(id, true, via);
     try {
       const sdp = await link.peer.createOffer();
@@ -286,7 +298,11 @@ export class RoomMesh {
     let env;
     try { env = JSON.parse(data); } catch { return; }
     const sig = await this.open(env);
-    if (!sig || sig.from !== from || sig.to !== this.selfId || typeof sig.sdp !== 'string') return;
+    // With a deterministic master slot, offers arrive addressed to the alias and
+    // the master's answers arrive labelled with it (the sender's routing id).
+    const forMe = sig.to === this.selfId || (this.alias && this.role === 'master' && sig.to === this.alias);
+    const senderOk = sig.from === from || (this.alias && from === this.alias);
+    if (!sig || !senderOk || !forMe || typeof sig.sdp !== 'string') return;
     if (typeof sig.ts !== 'number' || Math.abs(this.wallNow() - sig.ts) > this.cfg.RTC_SIGNAL_MAX_AGE_MS) return;
     if (sig.t === 'offer') await this._onOffer(from, sig.sdp, via);
     else if (sig.t === 'answer') this._onAnswer(from, sig.sdp);

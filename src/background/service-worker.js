@@ -334,10 +334,11 @@ function updateBadge(tabId, snap) {
   chrome.action.setBadgeBackgroundColor({ tabId, color: owner ? '#188038' : '#5f6368' }).catch(() => {});
 }
 
-/** '' (off) or a plain http(s) origin/path without credentials; null = invalid. */
+/** '' (built-in PeerJS cloud), 'off', or an http(s) URL without credentials; null = invalid. */
 function sanitizeDiscoveryUrl(raw) {
   const v = raw.trim();
   if (!v) return '';
+  if (/^off$/i.test(v)) return 'off';
   if (v.length > 200) return null;
   try {
     const u = new URL(v);

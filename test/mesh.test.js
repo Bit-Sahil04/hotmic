@@ -111,11 +111,11 @@ class World {
     };
   }
 
-  add(name, { net = 'office', id } = {}) {
+  add(name, { net = 'office', id, alias, claim } = {}) {
     const node = { name, net, alive: true, peers: new Set(), received: [], statuses: [] };
     node.id = id || [...name].map((c) => c.charCodeAt(0).toString(16)).join('').padEnd(16, '0').slice(0, 16);
     node.mesh = new RoomMesh({
-      selfId: node.id, clock: this.clock, signal: this.signal(), config: CONFIG,
+      selfId: node.id, clock: this.clock, signal: alias ? this.aliasSignal(node, claim) : this.signal(), alias: alias || null, config: CONFIG,
       seal: async (o) => JSON.stringify({ s: o }), open: async (env) => env.s || null,
       createPeer: this.rtc.factory(node),
       onData: (d) => node.received.push(d),
@@ -125,6 +125,32 @@ class World {
     this.nodes.set(name, node);
     node.mesh.start();
     return node;
+  }
+
+  /** Deterministic master slot (PeerJS-cloud style): one claimable alias id. */
+  aliasSignal(node, claim = { taken: false, holder: null }) {
+    const w = this;
+    const hop = async () => {
+      await new Promise((r) => w.clock.setTimeout(r, 10));
+      if (w.serverDown) throw new Error('offline');
+    };
+    return {
+      async masters() { await hop(); return [node.mesh.alias]; },
+      async register() {
+        await hop();
+        if (claim.taken && claim.holder !== node.id) throw new Error('id-taken: another device is the master');
+        claim.taken = true; claim.holder = node.id;
+        return [];
+      },
+      async unregister() { await hop(); if (claim.holder === node.id) { claim.taken = false; claim.holder = null; } },
+      async post(to, _from, data) {
+        await hop();
+        const label = claim.holder === node.id ? node.mesh.alias : node.id; // holder speaks as the slot
+        const target = [...w.nodes.values()].find((n) => n.id === to || n.mesh?.alias === to);
+        target?.mesh._onSealedSignal(label, data, 'server');
+      },
+      async take() { await hop(); return []; },
+    };
   }
 
   crash(name) {
@@ -300,4 +326,25 @@ test('no glare waste: a staggered 6-device room creates ~2 peer objects per link
   const created = [...w.nodes.values()].reduce((s, n) => s + n.peers.size, 0);
   const links = (names.length * (names.length - 1)) / 2;
   assert.ok(created <= links * 2 + 2, `created ${created} peer objects for ${links} links`);
+});
+
+test('built-in cloud: deterministic master slot — first claim wins, loser links the slot as member', async () => {
+  const w = new World();
+  const claim = { taken: false, holder: null };
+  const a = w.add('alice', { alias: TAG, claim });
+  await w.clock.run(8000);
+  assert.equal(a.mesh.role, 'master', 'first device claims the slot');
+
+  const b = w.add('bob', { alias: TAG, claim });
+  await w.clock.run(30000);
+  assert.equal(a.mesh.role, 'master', 'holder keeps the slot');
+  assert.equal(b.mesh.role, 'member', 'loser of the claim is a member');
+  assert.ok(w.linked('alice', 'bob'), 'bob linked the master through its alias');
+  assert.equal(w.nodes.get('bob').received.length, 0, 'no data flowed yet');
+
+  // and a third member converges through gossip as usual
+  const c = w.add('carol', { alias: TAG, claim });
+  await w.clock.run(30000);
+  assert.ok(w.linked('alice', 'carol'), 'carol linked the master');
+  assert.ok(w.linked('bob', 'carol'), 'full mesh formed');
 });

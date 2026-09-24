@@ -24,12 +24,14 @@ export class WebRtcTransport {
     this.retryTimer = null;
   }
 
-  get configured() { return !!this.url; }
+  get enabled() { return this.url !== 'off'; }
 
   info() {
     const rooms = this.rooms.map((id) => this.roomStatus[id]).filter(Boolean);
     return {
-      configured: this.configured,
+      configured: this.enabled,
+      builtin: !this.url,
+      off: this.url === 'off',
       url: this.url,
       state: this.state,
       error: this.lastError,
@@ -43,7 +45,7 @@ export class WebRtcTransport {
     this.url = url;
     this.everUp = false;
     if (this.wanted) {
-      if (url) this._ensureDocument(); else this._closeDocument();
+      if (this.enabled) this._ensureDocument(); else this._closeDocument();
     }
     this._pushConfig();
     this._recompute();
@@ -58,7 +60,7 @@ export class WebRtcTransport {
 
   start() {
     this.wanted = true;
-    if (this.url) this._ensureDocument();
+    if (this.enabled) this._ensureDocument();
     this._recompute();
   }
 
@@ -97,9 +99,9 @@ export class WebRtcTransport {
       this.roomStatus = {};
       this._recompute();
       // Offscreen document crashed or was closed: recreate it if still needed.
-      if (this.wanted && this.url) {
+      if (this.wanted && this.enabled) {
         clearTimeout(this.retryTimer);
-        this.retryTimer = setTimeout(() => { this.retryTimer = null; if (this.wanted && this.url && !this.port) this._ensureDocument(); }, 1000);
+        this.retryTimer = setTimeout(() => { this.retryTimer = null; if (this.wanted && this.enabled && !this.port) this._ensureDocument(); }, 1000);
       }
     });
     this._pushConfig();
@@ -132,7 +134,7 @@ export class WebRtcTransport {
     let state;
     let error = null;
     if (!this.wanted) state = 'idle';
-    else if (!this.url) { state = 'unavailable'; error = 'no discovery server configured'; }
+    else if (!this.enabled) { state = 'unavailable'; error = 'discovery turned off'; }
     else if (!this.port) state = this.everUp ? 'lost' : 'connecting';
     else {
       const st = this.rooms.map((id) => this.roomStatus[id]).filter(Boolean);

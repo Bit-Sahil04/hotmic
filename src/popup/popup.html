@@ -66,10 +66,21 @@
       </div>
 
       <div class="block">
-        <h2>Discovery server (WebRTC)</h2>
-        <input id="discovery-url" maxlength="200" autocomplete="off" spellcheck="false" placeholder="https://… (optional)">
-        <div id="discovery-url-error" class="warn small" hidden>Enter an http(s) URL, or leave empty.</div>
-        <div class="muted small">Optional, no install needed. Nearby devices use it once to find each other, then connect directly over the local network. It only sees an encrypted handshake.</div>
+        <div class="row">
+          <h2>Discovery</h2>
+          <button id="discovery-info" class="icon" title="About discovery" aria-label="About discovery options">i</button>
+        </div>
+        <input id="discovery-url" maxlength="200" autocomplete="off" spellcheck="false" placeholder="Built-in cloud (default) — or your own URL, or 'off'">
+        <div id="discovery-url-error" class="warn small" hidden>Enter an http(s) URL, 'off', or leave empty.</div>
+        <div id="discovery-help" class="muted small" hidden>
+          Empty uses the <b>built-in cloud</b> (PeerJS) — no setup. Nearby devices are introduced
+          through it once, then talk directly over the local network. It only sees an opaque room
+          tag and an encrypted handshake; never names, meeting codes or audio.
+          Paste <b>https://…</b> to use your own discovery server instead
+          (<code>npm run rendezvous</code>), or type <b>off</b> to disable WebRTC discovery
+          (the LAN helper and local-only mode keep working).
+        </div>
+        <div class="muted small">Only used to introduce devices — coordination flows directly over the local network.</div>
       </div>
     </section>
 

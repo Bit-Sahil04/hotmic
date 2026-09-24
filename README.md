@@ -56,18 +56,29 @@ the extension under another ID. Restart Chrome after installing.
 
 #### Option B: WebRTC discovery (zero install)
 
-1. Run the rendezvous server somewhere every device can reach. It needs no dependencies and keeps
-   everything in memory:
-   ```sh
-   PORT=8787 node rendezvous/server.mjs      # or: npm run rendezvous
-   ```
-   Put it behind HTTPS for real use. Any small VM or container works, or a machine on the office
-   LAN.
-2. In each extension's popup set **Discovery server (WebRTC)** to its URL, e.g.
-   `https://hotmic.example.com`.
+Out of the box the extension uses the **built-in discovery service**: a blind rendezvous server
+(`rendezvous/worker.mjs`) deployed on Cloudflare Workers' free tier and set as
+`DEFAULT_DISCOVERY_URL` in `src/shared/config.js`. No per-device setup. It only ever sees an
+opaque room tag, random device ids and AES-GCM-sealed handshake blobs, and everything it stores
+expires within seconds to a minute.
 
-The popup then shows `WebRTC: connected · master · 0 nearby links` on the first device, and
-`WebRTC: connected · 1 nearby link` on the next one.
+Self-hosting (corporate networks, offline rooms, or not trusting the default): run
+
+```sh
+PORT=8787 node rendezvous/server.mjs      # or: npm run rendezvous
+```
+
+or deploy `rendezvous/worker.mjs` to your own Cloudflare account (`npx wrangler deploy`). Then
+paste the URL into the popup's **Discovery** field — the `i` icon next to it explains the
+options. Typing `off` there disables WebRTC discovery (the LAN helper and local-only mode keep
+working). The popup then shows `WebRTC (built-in): connected · master · 0 nearby links` on the
+first device and `… · 1 nearby link` on the next one.
+
+> Why not the free PeerJS cloud as the built-in? It was evaluated and rejected — see
+> `tools/peerjs-probe.mjs` / `tools/relay-probe.mjs`: it 403s non-browser WebSocket clients and
+> silently closes sockets that send hand-rolled relay frames (even byte-faithful ones), so it can
+> only be used through its own client library — which would own the connections, see the SDPs,
+> and force a mesh refactor. Our own worker is blind by construction and free at this scale.
 
 ### 3. Use it
 
