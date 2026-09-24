@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Microphone Sharing</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <h1>Microphone Sharing</h1>
+
+    <section id="no-meet" hidden>
+      <p class="muted">Open a Google Meet call to use Microphone Sharing.</p>
+    </section>
+
+    <section id="meet" hidden>
+      <div class="block">
+        <div class="label">Google Meet</div>
+        <div id="meeting-id" class="mono"></div>
+      </div>
+
+      <div id="sharing-status" class="block status-line"></div>
+
+      <div id="prompt" class="block card" hidden>
+        <p id="prompt-text"></p>
+        <div class="actions">
+          <button id="decline">Not now</button>
+          <button id="join" class="primary">Join microphone sharing</button>
+        </div>
+      </div>
+
+      <div id="participants-block" class="block" hidden>
+        <h2>Participants</h2>
+        <ul id="participants"></ul>
+      </div>
+
+      <div id="alone" class="block" hidden>
+        <p>No other participants nearby.</p>
+        <p class="muted">You can still use microphone sharing.</p>
+      </div>
+
+      <div id="nearby" class="block muted small" hidden></div>
+
+      <div id="owner-block" class="block" hidden>
+        <p id="owner-line" class="owner-line"></p>
+        <button id="toggle-btn" hidden>Take microphone</button>
+      </div>
+    </section>
+
+    <section id="controls">
+      <div class="block">
+        <h2>Mode</h2>
+        <label><input type="radio" name="mode" value="ptt"> Push to Talk</label>
+        <label><input type="radio" name="mode" value="toggle"> Toggle</label>
+      </div>
+
+      <div class="block">
+        <h2 id="key-heading">PTT key</h2>
+        <button id="ptt-key" class="key">[ Space ]</button>
+      </div>
+
+      <div class="block">
+        <h2>Your name</h2>
+        <input id="display-name" maxlength="40" autocomplete="off" spellcheck="false">
+        <div class="muted small">Shown only to nearby devices in the same meeting.</div>
+      </div>
+
+      <div class="block">
+        <h2>Discovery server (WebRTC)</h2>
+        <input id="discovery-url" maxlength="200" autocomplete="off" spellcheck="false" placeholder="https://… (optional)">
+        <div id="discovery-url-error" class="warn small" hidden>Enter an http(s) URL, or leave empty.</div>
+        <div class="muted small">Optional, no install needed. Nearby devices use it once to find each other, then connect directly over the local network. It only sees an encrypted handshake.</div>
+      </div>
+    </section>
+
+    <section id="status-block" class="block">
+      <h2>Status</h2>
+      <div id="status"></div>
+      <div id="warning" class="warn" hidden></div>
+      <div id="paths" class="muted small"></div>
+      <div id="device" class="muted small"></div>
+      <button id="leave" class="link" hidden>Leave microphone sharing</button>
+    </section>
+  </main>
+  <script src="../content/overlay.js"></script>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
