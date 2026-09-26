@@ -25,7 +25,12 @@ const popups = new Map();
 const roomCrypto = new Map();
 
 let settings = { ...DEFAULT_SETTINGS };
-const settingsReady = loadSettings();
+// Never let this module-level promise reject: a rejection here has no JS frame,
+// so Chrome records it in the extensions panel as an error with an Unknown context
+// and a ":0 (anonymous function)" stack — noise on every load if storage hiccups.
+const settingsReady = loadSettings().catch((err) => {
+  console.error('HotMic settings load failed; using defaults', err);
+});
 let transportIdleTimer = null;
 
 const onTransportStatus = () => { for (const e of tabs.values()) applyTransport(e); pushAllPopups(); };
@@ -393,17 +398,31 @@ function sanitizeDevice(d) {
 // automatically, so inject them (orphaned old scripts mute and tear down).
 
 chrome.runtime.onInstalled.addListener(async () => {
-  const meetTabs = await chrome.tabs.query({ url: 'https://meet.google.com/*' });
-  for (const t of meetTabs) {
-    try {
-      await chrome.scripting.executeScript({ target: { tabId: t.id }, world: 'MAIN', files: ['src/content/page-probe.js'] });
-      await chrome.scripting.executeScript({
-        target: { tabId: t.id },
-        files: ['src/content/meet-adapter.js', 'src/content/overlay.js', 'src/content/content.js'],
-      });
-    } catch { /* tab not scriptable */ }
+  try {
+    const meetTabs = await chrome.tabs.query({ url: 'https://meet.google.com/*' });
+    for (const t of meetTabs) {
+      try {
+        await chrome.scripting.executeScript({ target: { tabId: t.id }, world: 'MAIN', files: ['src/content/page-probe.js'] });
+        await chrome.scripting.executeScript({
+          target: { tabId: t.id },
+          files: ['src/content/meet-adapter.js', 'src/content/overlay.js', 'src/content/content.js'],
+        });
+      } catch { /* tab not scriptable */ }
+    }
+  } catch (err) {
+    console.error('HotMic re-injection after install failed', err);
   }
 });
+
+// Last-resort net: an unhandled rejection in a terminating worker has no JS frame,
+// so Chrome logs it in chrome://extensions as an error with an Unknown context and a
+// ":0 (anonymous function)" stack. Log the real reason to the worker console instead.
+if (typeof self !== 'undefined') { // Node test harness has no self
+  self.addEventListener('unhandledrejection', (ev) => {
+    console.error('HotMic unhandled rejection in service worker', ev.reason);
+    ev.preventDefault();
+  });
+}
 
 /**
  * @typedef {object} TabEntry
