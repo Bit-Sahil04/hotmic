@@ -47,7 +47,7 @@ $('discovery-info').addEventListener('click', () => {
 });
 
 function validUrl(v) {
-  if (!v) return true;                 // built-in PeerJS cloud
+  if (!v) return true;                 // built-in discovery cloud
   if (/^off$/i.test(v)) return true;   // WebRTC discovery disabled
   try {
     const u = new URL(v);
