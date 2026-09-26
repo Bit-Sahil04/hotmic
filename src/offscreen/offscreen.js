@@ -9,6 +9,7 @@
 import { CONFIG } from '../shared/config.js';
 import { deriveRoom } from '../background/crypto.js';
 import { RoomMesh } from './mesh.js';
+import { PeerJsRoomMesh } from './peerjs-mesh.js';
 import { SignalClient } from './signal-client.js';
 import { createRtcPeer } from './rtc.js';
 
@@ -42,8 +43,8 @@ function onMessage(msg) {
   else if (msg.type === 'send' && typeof msg.data === 'string') send(msg.data);
 }
 
-// '' = built-in discovery service (DEFAULT_DISCOVERY_URL); 'off' = WebRTC
-// discovery disabled; otherwise a custom rendezvous server URL.
+// '' = built-in PeerJS cloud (peerjs-mesh.js); 'off' = WebRTC discovery
+// disabled; otherwise a custom rendezvous server URL (mesh.js + SignalClient).
 function configure(nextUrl, wanted) {
   const active = nextUrl !== 'off';
   const urlChanged = nextUrl !== url;
@@ -60,18 +61,18 @@ function startRoom(meetingId) {
   rooms.set(meetingId, entry);
   entry.pending = deriveRoom(meetingId).then((rc) => {
     if (rooms.get(meetingId) !== entry) return;
-    const selfId = [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, '0')).join('');
     entry.roomTag = rc.roomTag;
-    entry.mesh = new RoomMesh({
+    const selfId = [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, '0')).join('');
+    const shared = {
       selfId, clock, config: CONFIG,
-      // '' (built-in) resolves to our rendezvous deployment; custom URL passes through.
-      signal: new SignalClient(entry.url || CONFIG.DEFAULT_DISCOVERY_URL, rc.roomTag),
       seal: (obj) => rc.seal(obj),
       open: (env) => rc.open(env),
-      createPeer: createRtcPeer,
       onData: (data) => { if (port) port.postMessage({ type: 'recv', data }); },
       onStatus: (st) => { entry.status = st; pushStatus(); },
-    });
+    };
+    entry.mesh = entry.url
+      ? new RoomMesh({ ...shared, signal: new SignalClient(entry.url, rc.roomTag), createPeer: createRtcPeer })
+      : new PeerJsRoomMesh({ ...shared, roomTag: rc.roomTag, peerFactory: globalThis.Peer });
     byTag.set(rc.roomTag, entry);
     entry.mesh.start();
   }).catch((err) => {

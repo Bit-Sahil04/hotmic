@@ -58,10 +58,10 @@ export const CONFIG = Object.freeze({
   TRANSPORT_RETRY_MAX_MS: 10000,
 
   // ---- WebRTC discovery (rendezvous server + LAN-only data channels) --------
-  DEFAULT_DISCOVERY_URL: 'https://hotmic-rendezvous.workers.dev', // built-in (free tier); deploy rendezvous/worker.mjs and set your URL
   RTC_LISTEN_MS: 4000,           // try reaching existing masters this long before becoming one
   RTC_CONNECT_TIMEOUT_MS: 8000,  // a link not open by then is dropped (not on our LAN)
   RTC_FAILED_BACKOFF_MS: 60000,  // don't retry an unreachable master sooner than this
+  RTC_PROBE_WAIT_MS: 2000,       // cloud driver: wait for a slot dial before claiming
   RTC_MASTER_REFRESH_MS: 10000,  // master re-registers (server TTL is 3x this)
   RTC_GOSSIP_MS: 5000,           // peer-list exchange inside the mesh
   RTC_CHECK_MS: 5000,            // member without a master link re-checks the server

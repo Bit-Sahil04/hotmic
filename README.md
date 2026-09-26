@@ -56,11 +56,14 @@ the extension under another ID. Restart Chrome after installing.
 
 #### Option B: WebRTC discovery (zero install)
 
-Out of the box the extension uses the **built-in discovery service**: a blind rendezvous server
-(`rendezvous/worker.mjs`) deployed on Cloudflare Workers' free tier and set as
-`DEFAULT_DISCOVERY_URL` in `src/shared/config.js`. No per-device setup. It only ever sees an
-opaque room tag, random device ids and AES-GCM-sealed handshake blobs, and everything it stores
-expires within seconds to a minute.
+Out of the box the extension uses the **PeerJS public cloud** as its discovery provider (zero
+setup, no account): the room's rendezvous "master slot" is the deterministic PeerJS id
+`h` + <room tag> and the cloud arbitrates claims, so exactly one device per meeting becomes the
+master; everyone else dials the slot directly. The first exchange on every link is an
+AES-GCM-sealed challenge bound to the room key (see `src/offscreen/peerjs-mesh.js`), so only
+genuine room members can link. With LAN-only ICE (no STUN/TURN) the audio-control traffic still
+never leaves the local network; the cloud only sees opaque room tags, random ids and mDNS-based
+SDPs.
 
 Self-hosting (corporate networks, offline rooms, or not trusting the default): run
 
@@ -70,15 +73,17 @@ PORT=8787 node rendezvous/server.mjs      # or: npm run rendezvous
 
 or deploy `rendezvous/worker.mjs` to your own Cloudflare account (`npx wrangler deploy`). Then
 paste the URL into the popup's **Discovery** field — the `i` icon next to it explains the
-options. Typing `off` there disables WebRTC discovery (the LAN helper and local-only mode keep
-working). The popup then shows `WebRTC (built-in): connected · master · 0 nearby links` on the
+options; that path uses our own blind rendezvous protocol (sealed SDP signalling, the cloud sees
+even less). Typing `off` there disables WebRTC discovery (the LAN helper and local-only mode keep
+working). The popup shows `WebRTC (built-in cloud): connected · master · 0 nearby links` on the
 first device and `… · 1 nearby link` on the next one.
 
-> Why not the free PeerJS cloud as the built-in? It was evaluated and rejected — see
-> `tools/peerjs-probe.mjs` / `tools/relay-probe.mjs`: it 403s non-browser WebSocket clients and
-> silently closes sockets that send hand-rolled relay frames (even byte-faithful ones), so it can
-> only be used through its own client library — which would own the connections, see the SDPs,
-> and force a mesh refactor. Our own worker is blind by construction and free at this scale.
+> Implementation note: the PeerJS cloud only relays traffic from its own client library — it
+> 403s non-browser sockets and closes hand-rolled relay frames (see `tools/peerjs-probe.mjs`,
+> `tools/relay-probe.mjs`). We therefore vendor `vendor/peerjs.min.js` (~93 KB, MIT) into the
+> offscreen document and let it own the connections; our mesh rides on its data channels. The
+> public WebTorrent trackers were evaluated as an alternative and rejected — they no longer
+> relay offers/answers (`tools/tracker-probe.mjs`).
 
 ### 3. Use it
 

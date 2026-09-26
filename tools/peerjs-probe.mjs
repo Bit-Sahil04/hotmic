@@ -6,33 +6,34 @@ import { launch, findChrome, ROOT, sleep } from './lib/chrome.mjs';
 const PAGE = `<!doctype html><body><script src="/vendor/peerjs.min.js"></script><script>
 window.out = [];
 const log = (...a) => window.out.push(a.join(' '));
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const TAG = 'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd';
 const hex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map(b => b.toString(16).padStart(2, '0')).join('');
 (async () => {
   try {
-    const idA = hex(16); const idR = hex(16);
-    log('A=' + idA + ' RAW=' + idR);
-    const a = new Peer(idA, { config: { iceServers: [] } });
-    a.on('open', () => log('A open'));
-    a.on('error', (e) => log('A error:', e.type, (e.message || '').slice(0, 120)));
-    a.on('connection', (c) => { log('A got connection from', c.peer, 'meta:', JSON.stringify(c.metadata)); });
-    await new Promise((r) => a.on('open', r));
-    await sleep(300);
-    // RAW socket sends an OFFER addressed to the real client A
-    const raw = await new Promise((resolve, reject) => {
-      const ws = new WebSocket('wss://0.peerjs.com:443/peerjs?key=peerjs&id=' + idR + '&token=' + Math.random().toString(36).slice(2) + '&version=1.5.4');
-      ws.onopen = () => resolve(ws);
-      ws.onerror = () => reject(new Error('ws error'));
-    });
-    raw.onmessage = (ev) => log('RAW < ' + ev.data.slice(0, 150));
-    raw.onclose = (e) => log('RAW close code=' + e.code);
-    await sleep(300);
-    log('RAW sends OFFER dst=A');
-    raw.send(JSON.stringify({ type: 'OFFER', payload: { sdp: { sdp: 'x', type: 'offer' }, type: 'data', connectionId: 'dc_x1', metadata: { blob: 'sealed' }, label: 'l', reliable: false, serialization: 'binary' }, dst: idA }));
-    await sleep(3000);
-    log('RAW alive=' + (raw.readyState === 1) + ' A alive=' + (a.open));
+    const master = new Peer('h' + TAG, { debug: 0 });
+    await new Promise((r, j) => { master.on('open', r); master.on('error', (e) => j(new Error(e.type))); });
+    const seen = [];
+    master.socket.on('message', (f) => { seen.push(f.type); log('MASTER < ' + f.type + ' src=' + f.src + ' payload=' + JSON.stringify(f.payload).slice(0, 70)); });
+    master.on('connection', (c) => log('MASTER conn from ' + c.peer));
+    master.on('error', (e) => log('MASTER error: ' + e.type));
+    const member = new Peer('m' + hex(16), { debug: 0 });
+    await new Promise((r) => member.on('open', r));
+    member.on('error', (e) => log('MEMBER error: ' + e.type));
+    const slot = 'h' + TAG;
+    const trials = [
+      ['OFFER-garbage', { type: 'OFFER', payload: { sdp: 'GARBAGE', type: 'data', connectionId: 'dc_t1' }, dst: slot }],
+      ['OFFER-shape',   { type: 'OFFER', payload: { sdp: { type: 'offer', sdp: 'v=0' }, type: 'data', connectionId: 'dc_t2' }, dst: slot }],
+      ['ANSWER-garbage',{ type: 'ANSWER', payload: { sdp: 'GARBAGE', type: 'data', connectionId: 'dc_t3' }, dst: slot }],
+      ['CANDIDATE',     { type: 'CANDIDATE', payload: { candidate: { sdpMid: '0' }, connectionId: 'dc_t4' }, dst: slot }],
+      ['X-again',       { type: 'X', payload: { data: 'blob' }, dst: slot }],
+    ];
+    for (const [name, frame] of trials) {
+      member.socket.send(frame);
+      await new Promise((r) => setTimeout(r, 700));
+      log(name + ': member socket still open=' + (member.socket._ws?.readyState === 1) + ' relayed=' + seen.length);
+    }
     log('PROBE-DONE');
-  } catch (e) { log('PROBE-FAIL ' + (e.stack || e.message)); }
+  } catch (e) { log('PROBE-FAIL ' + (e.message || e)); }
 })();
 </script></body>`;
 
