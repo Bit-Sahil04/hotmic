@@ -22,8 +22,7 @@ export const CONFIG = Object.freeze({
 
   // ---- Activity (browser-level WebRTC audioLevel, never raw audio) ---------
   ACTIVITY_LEVEL_THRESHOLD: 0.02,
-  ACTIVITY_IDLE_MS: 1200,        // owner idle this long => request may transfer
-  ACTIVITY_MAX_DEFER_MS: 3000,   // activity can delay an eligible transfer at most this long
+  ACTIVITY_IDLE_MS: 1200,        // owner quiet this long => request may transfer
   ACTIVITY_STALE_MS: 2000,       // no samples this long => activity unknown
   ACTIVITY_POLL_MS: 300,
 

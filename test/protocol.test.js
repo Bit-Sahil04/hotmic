@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { World, IDS } from './sim.js';
+import { CONFIG } from '../src/shared/config.js';
 import { TRANSPORT } from '../src/background/session.js';
 
 const settle = (w) => w.run(2500); // > SYNC_MS so everyone has heard everyone
@@ -240,7 +241,7 @@ test('ownership cannot transfer during the first 5 seconds; can after', () => {
   expectSafe(w);
 });
 
-test('owner audio activity defers an eligible transfer, bounded by ACTIVITY_MAX_DEFER_MS', () => {
+test('owner keeps speaking => request waits; transfer only when activity dies down', () => {
   const w = new World();
   const a = w.add('sahil', { join: true, mode: 'toggle' });
   w.add('samir', { join: true });
@@ -249,11 +250,13 @@ test('owner audio activity defers an eligible transfer, bounded by ACTIVITY_MAX_
   w.run(300);
   const speak = setIntervalSim(w, () => a.session.onActivity(0.3), 200);
   w.pttDown('samir');
-  w.run(6000);                   // > 5 s held, but owner is active; defer started at 5 s
+  w.run(6000);                   // > 5 s held, but owner is active => keep waiting
   assert.deepEqual(w.owners(), ['sahil']);
-  w.run(2800);                   // defer bound (3 s) exceeded
-  assert.deepEqual(w.owners(), ['samir']);
-  speak.stop();
+  w.run(5000);                   // still speaking after 11 s => still waiting
+  assert.deepEqual(w.owners(), ['sahil'], 'no bound: speaking owner is never interrupted');
+  speak.stop();                  // activity dies down
+  w.run(CONFIG.ACTIVITY_IDLE_MS + 300);
+  assert.deepEqual(w.owners(), ['samir'], 'transfers once the owner goes quiet');
   expectSafe(w);
 });
 

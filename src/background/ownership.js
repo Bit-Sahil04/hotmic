@@ -19,8 +19,9 @@
 //   * Transfer to a requester only after the minimum-hold floor — shorter
 //     (MIN_OWNERSHIP_IDLE_MS) if the owner has been silent since acquiring the mic,
 //     full (MIN_OWNERSHIP_ACTIVE_MS) if they talked or activity is unknown — and
-//     (briefly) deferred
-//     while the owner shows browser-reported audio activity.
+//     only when the owner is not speaking: no fresh activity samples, or quiet
+//     for ACTIVITY_IDLE_MS. While the owner keeps talking with a fresh signal
+//     the request waits, however long.
 
 import { StateMachine } from '../shared/fsm.js';
 import { MIC } from './mic.js';
@@ -261,11 +262,12 @@ export class OwnershipManager {
         ? cfg.MIN_OWNERSHIP_IDLE_MS
         : cfg.MIN_OWNERSHIP_ACTIVE_MS;
       if (held < floor) return;
-      const eligibleAt = Math.max(this.ownerSince + floor, req.wantSince);
-      const idle = !act.known || act.idleMs >= cfg.ACTIVITY_IDLE_MS;
-      if (idle || now - eligibleAt >= cfg.ACTIVITY_MAX_DEFER_MS) {
-        this._relinquish(now, `microphone transferred to ${req.name}`, { to: req, involuntary: true });
-      }
+      // A fresh signal is authoritative: while the owner is still speaking the
+      // mic is not relinquished, no matter how long the request has waited. It
+      // transfers once the activity dies down (ACTIVITY_IDLE_MS of quiet) or
+      // when there is no fresh signal at all.
+      if (act.known && act.idleMs < cfg.ACTIVITY_IDLE_MS) return;
+      this._relinquish(now, `microphone transferred to ${req.name}`, { to: req, involuntary: true });
     }
   }
 

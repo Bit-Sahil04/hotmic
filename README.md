@@ -234,9 +234,10 @@ agreement instead of unanimous agreement (a V2 topic).
   the minimum-hold floor. The floor is `MIN_OWNERSHIP_ACTIVE_MS` (5 s) if the owner has spoken
   during the hold — or if activity is unknown/stale (conservative) — and `MIN_OWNERSHIP_IDLE_MS`
   (2 s) if Meet's WebRTC stats show the owner never spoke since acquiring the mic. After the
-  floor, the owner transfers to the longest-waiting requester (epoch + 1). If the owner is
-  still talking, the transfer waits until they are idle (`ACTIVITY_IDLE_MS`), for at most
-  `ACTIVITY_MAX_DEFER_MS`. A voluntary release hands the mic straight to a waiting requester.
+  floor, the owner transfers to the longest-waiting requester (epoch + 1) — but only when they
+  are not speaking: while Meet's WebRTC stats still show mic activity, the transfer waits until
+  the owner has been quiet for `ACTIVITY_IDLE_MS`, however long that takes. A voluntary release
+  hands the mic straight to a waiting requester.
 * A pre-empted user's intent is cleared (PTT needs a new press; toggle turns OFF), so there is no
   ping-pong.
 * **Joining late.** A device must listen for `SYNC_MS` before it may claim, so a late joiner
