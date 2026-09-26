@@ -256,6 +256,6 @@
   startObserver();
   restartPolling();
   pingTimer = setInterval(() => send({ type: 'ping' }), 20000);
-  globalThis.__hotmicContent = { teardown };
+  globalThis.__hotmicContent = { teardown, action: (a) => send({ type: 'action', action: String(a || '') }) };
   connect();
 })();

@@ -16,12 +16,13 @@
 //   * Owner LEASE: members ack our heartbeats; the owner fences itself (mutes and
 //     releases) LEASE_SAFETY_MARGIN_MS before any member could expire it.
 //   * Observers expire an owner not heard for LEASE_TIMEOUT_MS (new epoch, no owner).
-//   * Transfer to a requester only after the minimum-hold floor — shorter
-//     (MIN_OWNERSHIP_IDLE_MS) if the owner has been silent since acquiring the mic,
-//     full (MIN_OWNERSHIP_ACTIVE_MS) if they talked or activity is unknown — and
-//     only when the owner is not speaking: no fresh activity samples, or quiet
-//     for ACTIVITY_IDLE_MS. While the owner keeps talking with a fresh signal
-//     the request waits, however long.
+//   * Transfer to a requester is a REQUEST, never a grab: the owner's island
+//     shows the requester for HANDOVER_COUNTDOWN_MS (yellow pill with
+//     Wait / Accept). The owner can pass immediately (Accept) or restart the
+//     window (Wait). In the final HANDOVER_PAUSE_ZONE_MS the countdown pauses
+//     while the owner is still speaking, so an automatic hand-over never cuts
+//     them off mid-sentence; it completes once they have been quiet for
+//     ACTIVITY_IDLE_MS. A voluntary release still hands over immediately.
 
 import { StateMachine } from '../shared/fsm.js';
 import { MIC } from './mic.js';
@@ -84,6 +85,7 @@ export class OwnershipManager {
     this.claimAt = null;
     this.backoffUntil = -Infinity;
     this.sentTimes = new Map();      // our heartbeat seq -> local send time
+    this.handover = null;            // {id, endsAt, paused} while someone waits for our mic
     this.lastEvent = null;           // {reason, at}
     this.status = '';                // human-readable reason we're waiting
   }
@@ -98,6 +100,7 @@ export class OwnershipManager {
   deactivate(now, reason) {
     this.want = false;
     this.wantSince = null;
+    this.handover = null;
     if (this.holdsRecord) this._setRecord({ epoch: this.record.epoch + 1, owner: null }, now, reason);
     if (this.fsm.is(O.OWNER)) this.fsm.transition(O.RELEASED, reason);
     if (this.fsm.is(O.REQUESTED, O.RELEASED)) this.fsm.transition(O.NO_OWNER, reason);
@@ -252,23 +255,64 @@ export class OwnershipManager {
       if (conflict) return this._relinquish(now, `${conflict.name} is also unmuted`, { involuntary: true });
 
       const req = this._pickRequester(now);
-      if (!req) return;
+      if (!req) {
+        if (this.handover) {
+          this.handover = null;
+          this.hooks.requestSend('handover requester gone');
+        }
+        return;
+      }
+      if (!this.handover || this.handover.id !== req.id) {
+        this.handover = { id: req.id, endsAt: now + cfg.HANDOVER_COUNTDOWN_MS, paused: false };
+        this.lastEvent = { reason: `${req.name} requested the microphone`, at: now };
+        this.hooks.requestSend('handover requested');
+      }
       const act = this.hooks.activity(now);
-      const held = now - this.ownerSince;
-      // Meet's own WebRTC stats say the owner never spoke during this hold (and the
-      // signal is fresh) => a waiting requester may take over early. Unknown or
-      // stale activity, or any speech, keeps the full floor.
-      const floor = act.known && act.idleMs >= held
-        ? cfg.MIN_OWNERSHIP_IDLE_MS
-        : cfg.MIN_OWNERSHIP_ACTIVE_MS;
-      if (held < floor) return;
-      // A fresh signal is authoritative: while the owner is still speaking the
-      // mic is not relinquished, no matter how long the request has waited. It
-      // transfers once the activity dies down (ACTIVITY_IDLE_MS of quiet) or
-      // when there is no fresh signal at all.
-      if (act.known && act.idleMs < cfg.ACTIVITY_IDLE_MS) return;
-      this._relinquish(now, `microphone transferred to ${req.name}`, { to: req, involuntary: true });
+      const remaining = this.handover.endsAt - now;
+      // The final stretch of the countdown pauses while the owner is speaking,
+      // so an automatic hand-over never cuts them off mid-sentence. It resumes
+      // once they have been quiet for ACTIVITY_IDLE_MS (or the signal is gone).
+      const speaking = act.known && act.idleMs < cfg.ACTIVITY_IDLE_MS;
+      this.handover.paused = !!(speaking && remaining <= cfg.HANDOVER_PAUSE_ZONE_MS);
+      if (this.handover.paused) {
+        this.handover.endsAt = now + remaining; // frozen until they stop speaking
+      } else if (remaining <= 0) {
+        this.handover = null;
+        this._relinquish(now, `microphone transferred to ${req.name}`, { to: req, involuntary: true });
+      }
     }
+  }
+
+  // ---- hand-over request actions (owner's island buttons) ---------------------
+
+  /** Accept: pass the microphone to the requester right now. */
+  acceptHandover(now) {
+    if (this.fsm.state !== O.OWNER || !this.handover) return false;
+    const p = this.peers.get(this.handover.id);
+    const req = p ? { id: p.id, name: p.name, wantSince: p.wantSince } : null;
+    if (!req) { this.handover = null; return false; }
+    this.handover = null;
+    this._relinquish(now, `microphone passed to ${req.name}`, { to: req, involuntary: true });
+    return true;
+  }
+
+  /** Wait: deny the hand-over for now — restart the countdown window. */
+  deferHandover(now) {
+    if (this.fsm.state !== O.OWNER || !this.handover) return false;
+    this.handover = { id: this.handover.id, endsAt: now + this.config.HANDOVER_COUNTDOWN_MS, paused: false };
+    this.lastEvent = { reason: 'hand-over request delayed', at: now };
+    this.hooks.requestSend('hand-over delayed');
+    return true;
+  }
+
+  /** UI view of the pending hand-over request, or null. */
+  handoverView(now) {
+    if (!this.handover || this.fsm.state !== O.OWNER || !this.holdsRecord) return null;
+    return {
+      requesterId: this.handover.id,
+      remainingMs: Math.max(0, Math.round(this.handover.endsAt - now)),
+      paused: !!this.handover.paused,
+    };
   }
 
   // ---- internals ---------------------------------------------------------------
@@ -317,6 +361,7 @@ export class OwnershipManager {
     const isMine = this.holdsRecord;
 
     if (wasMine && !isMine) {
+      this.handover = null;
       if (this.fsm.is(O.OWNER)) {
         this.fsm.transition(O.RELEASED, source);
         this._lost(now, rec.owner ? 'microphone taken by another device' : 'ownership expired');
@@ -341,6 +386,7 @@ export class OwnershipManager {
   }
 
   _relinquish(now, reason, { to = null, handoff = false, involuntary = false }) {
+    this.handover = null;
     const next = to || (handoff ? this._pickRequester(now) : null);
     this._setRecord({ epoch: this.record.epoch + 1, owner: next ? next.id : null }, now, reason);
     if (this.fsm.is(O.OWNER)) this.fsm.transition(O.RELEASED, reason);

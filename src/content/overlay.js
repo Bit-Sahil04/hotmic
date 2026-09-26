@@ -18,10 +18,14 @@
              padding: 5px 14px; cursor: pointer; }
     button.primary { background: #8ab4f8; border-color: #8ab4f8; color: #202124; font-weight: 600; }
     .pill { border-radius: 18px; padding: 6px 8px 6px 12px; display: flex; align-items: center; gap: 8px; }
+    .pill.request { border-color: #fbbc04; }
+    .pill.request .text { color: #fdd663; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: #9aa0a6; flex: none; }
     .dot.mine { background: #34a853; } .dot.other { background: #fbbc04; } .dot.warn { background: #ea4335; }
     .warn-text { color: #f28b82; }
     .pill button { padding: 2px 10px; }
+    .pill.hint { padding: 4px 12px; font-size: 12px; color: #9aa0a6; gap: 6px; }
+    .pill.hint .kbd { border: 1px solid #5f6368; border-radius: 4px; padding: 0 5px; font-size: 11px; color: #e8eaed; }
     [hidden] { display: none !important; }
   `;
 
@@ -46,6 +50,19 @@
     return 'Microphone available';
   }
 
+  /** "Space" / "KeyM" / "Digit1" -> "Space" / "M" / "1" for the hint line. */
+  function keyLabel(code) {
+    if (typeof code !== 'string') return '';
+    return code.replace(/^(Key|Digit)/, '');
+  }
+
+  /** How to grab the mic with the current mode + hotkey, e.g. "Hold Space to enable mic". */
+  function grabHint(snap) {
+    const key = keyLabel(snap.hotkey);
+    if (!key) return '';
+    return snap.mode === 'toggle' ? `Press ${key} to toggle mic` : `Hold ${key} to enable mic`;
+  }
+
   function create({ onAction }) {
     document.getElementById('hotmic-overlay-host')?.remove(); // stale copy from a previous injection
     const host = document.createElement('div');
@@ -64,13 +81,18 @@
         </div>
         <div class="pill status" hidden>
           <span class="dot"></span><span class="text"></span>
+          <button class="wait" hidden>Wait</button>
+          <button class="accept primary" hidden>Accept</button>
           <button class="toggle" hidden></button>
         </div>
+        <div class="pill hint" hidden><span class="hint-text"></span></div>
       </div>`;
     const $ = (sel) => shadow.querySelector(sel);
     $('.join').addEventListener('click', () => onAction('join'));
     $('.decline').addEventListener('click', () => onAction('decline'));
     $('.toggle').addEventListener('click', () => onAction('toggle'));
+    $('.accept').addEventListener('click', () => onAction('handover-accept'));
+    $('.wait').addEventListener('click', () => onAction('handover-wait'));
 
     let snap = null;
     let snapAt = 0;
@@ -82,13 +104,19 @@
     function paint() {
       const prompt = $('.prompt');
       const pill = $('.status');
+      const hintPill = $('.hint');
       const dot = $('.dot');
       const text = $('.text');
       const toggle = $('.toggle');
+      const wait = $('.wait');
+      const accept = $('.accept');
       if (!snap || snap.ended) {
         prompt.hidden = true;
         pill.hidden = !notice;
+        hintPill.hidden = true;
         toggle.hidden = true;
+        wait.hidden = true;
+        accept.hidden = true;
         if (notice) { text.textContent = notice; text.className = 'text warn-text'; dot.className = 'dot warn'; }
         return;
       }
@@ -96,9 +124,24 @@
       if (!prompt.hidden) $('.prompt-text').textContent = snap.prompt;
 
       const joined = snap.participation === 'SHARING_JOINED';
-      pill.hidden = !joined;
-      if (!joined) return;
       const o = snap.ownership;
+      const isOwner = o.ownerIsSelf && o.state === 'OWNER';
+      pill.hidden = !joined;
+      pill.className = `pill status${joined && o.handover ? ' request' : ''}`;
+      const showHint = joined && !isOwner && !snap.warning && grabHint(snap);
+      hintPill.hidden = !showHint;
+      if (showHint) $('.hint-text').innerHTML = `${grabHint(snap).replace(/^(Press|Hold) (\S+)/, '$1 <span class="kbd">$2</span>')}`;
+      if (!joined) return;
+      wait.hidden = !o.handover;
+      accept.hidden = !o.handover;
+      if (o.handover) {
+        toggle.hidden = true;
+        dot.className = 'dot other';
+        const remaining = Math.max(0, o.handover.remainingMs - (o.handover.paused ? 0 : performance.now() - snapAt));
+        text.textContent = `${o.handover.requesterName} wants the microphone · ${o.handover.paused ? 'paused' : `${Math.ceil(remaining / 1000)}s`}`;
+        text.className = 'text';
+        return;
+      }
       if (snap.warning) {
         text.textContent = snap.warning;
         text.className = 'text warn-text';
@@ -106,13 +149,15 @@
       } else {
         text.textContent = ownerLine(snap, performance.now() - snapAt);
         text.className = 'text';
-        dot.className = `dot ${o.ownerIsSelf && o.state === 'OWNER' ? 'mine' : o.ownerId ? 'other' : ''}`;
+        dot.className = `dot ${isOwner ? 'mine' : o.ownerId ? 'other' : ''}`;
       }
       toggle.hidden = snap.mode !== 'toggle';
       toggle.textContent = snap.input.toggle === 'ON' ? 'Release' : 'Take mic';
     }
 
-    const timer = setInterval(() => { if (snap && snap.ownership.ownerHeldMs !== null) paint(); }, 500);
+    const timer = setInterval(() => {
+      if (snap && (snap.ownership.ownerHeldMs !== null || snap.ownership.handover)) paint();
+    }, 250);
 
     return {
       render(nextSnap, nextNotice = null) {

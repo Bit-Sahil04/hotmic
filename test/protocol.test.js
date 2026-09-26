@@ -218,7 +218,7 @@ test('simultaneous PTT: exactly one owner, deterministic (lower device id)', () 
   }
 });
 
-test('ownership cannot transfer during the first 5 seconds; can after', () => {
+test('request starts a 10 s handover window; transfer at expiry (quiet owner)', () => {
   const w = new World();
   const a = w.add('sahil', { join: true, mode: 'toggle' });
   const b = w.add('samir', { join: true });
@@ -226,22 +226,26 @@ test('ownership cannot transfer during the first 5 seconds; can after', () => {
   w.tap('sahil');
   w.run(300);
   const epochOwned = w.rec('sahil').epoch;
-  w.run(1000);            // Sahil has held ~1.3 s
+  w.run(1000);
   w.pttDown('samir');     // request
-  w.run(3000);            // ~4.3 s held
+  w.run(4000);            // request reaches the owner (via heartbeats); window running
   assert.deepEqual(w.owners(), ['sahil']);
   assert.equal(b.session.ownership.state, 'REQUESTED');
   assert.equal(b.meet.state, 'MUTED');
-  w.run(1500);            // passes 5 s (activity unknown => no deferral)
+  assert.ok(a.session.ownership.handoverView(w.clock.now()), 'island request pending');
+  w.run(5500);            // window almost over
+  assert.deepEqual(w.owners(), ['sahil']);
+  w.run(2500);            // 10 s window expires + hand-over completes
   assert.deepEqual(w.owners(), ['samir']);
   assert.equal(a.meet.state, 'MUTED');
   assert.equal(b.meet.state, 'UNMUTED');
   assert.equal(w.rec('samir').epoch, epochOwned + 1, 'epoch increments on transfer');
   assert.equal(a.session.input.toggle.state, 'OFF', 'pre-empted toggle turns off (no ping-pong)');
+  assert.equal(a.session.ownership.handoverView(w.clock.now()), null, 'request cleared after transfer');
   expectSafe(w);
 });
 
-test('owner keeps speaking => request waits; transfer only when activity dies down', () => {
+test('countdown pauses while the owner speaks during the final 3 s', () => {
   const w = new World();
   const a = w.add('sahil', { join: true, mode: 'toggle' });
   w.add('samir', { join: true });
@@ -250,51 +254,67 @@ test('owner keeps speaking => request waits; transfer only when activity dies do
   w.run(300);
   const speak = setIntervalSim(w, () => a.session.onActivity(0.3), 200);
   w.pttDown('samir');
-  w.run(6000);                   // > 5 s held, but owner is active => keep waiting
+  w.run(7000);                   // first 7 s: countdown runs even while speaking
+  let t = w.clock.now();
+  const remainingAt7s = a.session.ownership.handoverView(t).remainingMs;
+  assert.ok(remainingAt7s > 2500 && remainingAt7s <= 3100, `~3 s left, got ${remainingAt7s}`);
+  w.run(2500);                   // still speaking in the final stretch => frozen
   assert.deepEqual(w.owners(), ['sahil']);
-  w.run(5000);                   // still speaking after 11 s => still waiting
-  assert.deepEqual(w.owners(), ['sahil'], 'no bound: speaking owner is never interrupted');
+  const remainingFrozen = a.session.ownership.handoverView(w.clock.now()).remainingMs;
+  assert.ok(remainingFrozen > 0, 'window not expired while speaking');
   speak.stop();                  // activity dies down
-  w.run(CONFIG.ACTIVITY_IDLE_MS + 300);
+  w.run(CONFIG.ACTIVITY_IDLE_MS + 3200); // quiet => resumes and completes
   assert.deepEqual(w.owners(), ['samir'], 'transfers once the owner goes quiet');
   expectSafe(w);
 });
 
-test('idle owner (activity known, silent since acquiring) transfers after the short floor', () => {
+test('accept passes the microphone immediately', () => {
   const w = new World();
   const a = w.add('sahil', { join: true, mode: 'toggle' });
-  w.add('samir', { join: true });
+  const b = w.add('samir', { join: true });
   settle(w);
   w.tap('sahil');
   w.run(300);
-  const quiet = setIntervalSim(w, () => a.session.onActivity(0.0), 200);
   w.pttDown('samir');
-  w.run(1500);                   // held < 2 s
-  assert.deepEqual(w.owners(), ['sahil'], 'short floor still protects the first 2 s');
-  w.run(1000);                   // silent the whole hold => 2 s floor
-  assert.deepEqual(w.owners(), ['samir']);
-  assert.ok(true);
-  quiet.stop();
+  w.run(1000);
+  assert.deepEqual(w.owners(), ['sahil']);
+  a.session.acceptHandover();
+  w.run(100);
+  assert.deepEqual(w.owners(), ['samir'], 'passed without waiting out the window');
+  assert.equal(a.meet.state, 'MUTED');
+  assert.equal(b.meet.state, 'UNMUTED');
+  expectSafe(w);
 });
 
-test('owner who talked during the hold keeps the full 5 s floor', () => {
+test('wait restarts the window; voluntary release still hands over', () => {
   const w = new World();
   const a = w.add('sahil', { join: true, mode: 'toggle' });
-  w.add('samir', { join: true });
+  const b = w.add('samir', { join: true });
   settle(w);
   w.tap('sahil');
   w.run(300);
-  // Talk at the very start of the hold, then go quiet.
-  const speak = setIntervalSim(w, () => a.session.onActivity(0.3), 200);
-  w.run(600);
-  speak.stop();
-  const quiet = setIntervalSim(w, () => a.session.onActivity(0.0), 200);
   w.pttDown('samir');
-  w.run(3000);                   // held ~4 s: talked during hold => full floor
+  w.run(8000);
   assert.deepEqual(w.owners(), ['sahil']);
-  w.run(1600);                   // past 5 s, idle => transfer
+  a.session.deferHandover();     // Wait: window restarts
+  w.run(9500);
+  assert.deepEqual(w.owners(), ['sahil'], 'new window still running');
+  w.run(1000);                   // restarted window expires
   assert.deepEqual(w.owners(), ['samir']);
-  quiet.stop();
+  // Voluntary release path is unchanged: owner releases => waiting requester gets it.
+  const w2 = new World();
+  const c = w2.add('sahil', { join: true, mode: 'toggle' });
+  w2.add('samir', { join: true });
+  settle(w2);
+  w2.tap('sahil');
+  w2.run(300);
+  w2.pttDown('samir');
+  w2.run(500);
+  w2.tap('sahil');               // release hands over immediately, no window
+  w2.run(300);
+  assert.deepEqual(w2.owners(), ['samir']);
+  expectSafe(w2);
+  expectSafe(w);
 });
 
 test('owner releasing hands the mic to the waiting requester', () => {

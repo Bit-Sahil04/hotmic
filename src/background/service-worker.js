@@ -78,6 +78,7 @@ async function updateSettings(patch = {}) {
   for (const e of tabs.values()) {
     e.session?.setDisplayName(settings.displayName);
     e.session?.setMode(settings.mode);
+    e.session?.setHotkey(settings.pttKey);
     post(e, { type: 'config', config: contentConfig(), settings });
   }
   pushAllPopups();
@@ -149,6 +150,7 @@ function startSession(entry, meetingId, mic) {
   const session = new RoomSession({
     clock, config: CONFIG, meetingId,
     displayName: settings.displayName, mode: settings.mode,
+    hotkey: settings.pttKey,
     transportState: TRANSPORT.CONNECTING,
     send: (msg) => sendToRoom(entry, session, msg),
     sendMeetCommand: (cmd) => post(entry, { type: 'set-mute', id: cmd.id, muted: cmd.muted }),
@@ -207,6 +209,8 @@ function doAction(entry, action) {
   else if (action === 'decline') s.decline();
   else if (action === 'leave') s.leaveSharing();
   else if (action === 'toggle') s.uiToggle();
+  else if (action === 'handover-accept') s.acceptHandover();
+  else if (action === 'handover-wait') s.deferHandover();
 }
 
 function post(entry, msg) {

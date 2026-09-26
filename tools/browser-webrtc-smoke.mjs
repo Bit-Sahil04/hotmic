@@ -77,13 +77,25 @@ try {
   const bOwner = await waitUntil(async () => { const t = await text(B, popB.sessionId, 'owner-line'); return t.startsWith('Sahil has the microphone') && t; }, 'B sees owner', 5000).catch(() => false);
   check('B popup: "Sahil has the microphone · Ns"', !!bOwner, bOwner || await text(B, popB.sessionId, 'owner-line'));
 
-  // --- B requests during A's first 5 s: nothing changes; A releases => B gets it
+  // --- B requests the mic: A's island/popup shows the request; no direct grab.
   await B.key(meetB, 'rawKeyDown');
-  await sleep(1000);
-  check('B request within A\'s 5 s minimum does not transfer', (await B.micMuted(meetB)) && !(await A.micMuted(meetA)));
-  await A.key(meetA, 'keyUp');
+  await sleep(1500);
+  const req = await waitUntil(async () => {
+    const t = await text(A, popA.sessionId, 'handover-line');
+    return t.startsWith('Samir wants the microphone') ? t : false;
+  }, 'A sees the request', 6000).catch(() => false);
+  check('B request => A sees "Samir wants the microphone · Ns" (island + popup), no transfer',
+    !!req && (await B.micMuted(meetB)) && !(await A.micMuted(meetA)), req || 'no request line');
+  check('A does not pass the mic within 5 s of the request', (await B.micMuted(meetB)) && !(await A.micMuted(meetA)));
+  // Wait restarts the window; the request stays visible.
+  await A.eval(popA.sessionId, `document.getElementById('handover-wait').click()`);
+  await sleep(1500);
+  check('Wait keeps the mic with A and the request visible',
+    !(await A.micMuted(meetA)) && /Samir wants the microphone/.test(await text(A, popA.sessionId, 'handover-line')));
+  // Accept passes the mic immediately.
+  await A.eval(popA.sessionId, `document.getElementById('handover-accept').click()`);
   const handover = await waitUntil(async () => (await A.micMuted(meetA)) && !(await B.micMuted(meetB)), 'handover', 6000).catch(() => false);
-  check('A releases => mic handed to waiting B; A muted first', handover);
+  check('Accept => mic handed to waiting B; A muted first', handover);
   const aOwner = await waitUntil(async () => { const t = await text(A, popA.sessionId, 'owner-line'); return t.startsWith('Samir has the microphone') && t; }, 'A sees B owner', 5000).catch(() => false);
   check('A popup shows Samir has the microphone', !!aOwner, aOwner || '');
   await B.key(meetB, 'keyUp');

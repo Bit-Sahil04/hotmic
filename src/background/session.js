@@ -48,6 +48,7 @@ export class RoomSession {
     this.idFactory = deps.idFactory || (() => newDeviceId());
     this.transport = deps.transportState || TRANSPORT.CONNECTING;
     this.everUp = this.transport === TRANSPORT.UP;
+    this.hotkey = typeof deps.hotkey === 'string' ? deps.hotkey : null;
 
     this.consent = new ConsentManager();
     this.mic = new MicController({
@@ -153,6 +154,7 @@ export class RoomSession {
   }
 
   setMode(mode) { this.input.setMode(mode); this._evaluate(); }
+  setHotkey(key) { this.hotkey = typeof key === 'string' && key ? key : null; this._evaluate(); }
   setDisplayName(name) {
     this.displayName = sanitizeName(name || '', this.config.MAX_NAME_LENGTH);
     this._requestSend('name');
@@ -179,6 +181,15 @@ export class RoomSession {
   onMicCommandResult(result) {
     this.mic.onCommandResult(result, this.clock.now());
     this._evaluate();
+  }
+
+  /** Owner's island buttons: pass the mic now / restart the request window. */
+  acceptHandover() {
+    if (this.ownership.acceptHandover(this.clock.now())) this._evaluate();
+  }
+
+  deferHandover() {
+    if (this.ownership.deferHandover(this.clock.now())) this._evaluate();
   }
 
   /** Browser-reported audio level of Meet's outgoing track (WebRTC stats). Local only. */
@@ -296,6 +307,8 @@ export class RoomSession {
     const nearby = livePeers.filter((p) => p.status !== 'joined').sort(byName).map((p) => ({ id: p.id, name: p.name }));
 
     const coord = this.coordination();
+    const hoRaw = o.handoverView(now);
+    const hoPeer = hoRaw ? this.peers.get(hoRaw.requesterId) : null;
     let warning = null;
     if (this.mic.inconsistent) warning = this.mic.inconsistent.reason;
     else if (joined && !coord.ok && coord.reason !== 'connecting') warning = `${cap(coord.reason)} — microphone muted`;
@@ -310,6 +323,7 @@ export class RoomSession {
       participation: this.consent.state,
       prompt: this.consent.state === PARTICIPATION.PROMPTED ? this.consent.promptText : null,
       mode: this.input.mode,
+      hotkey: this.hotkey,
       input: { ptt: this.input.ptt.state, toggle: this.input.toggle.state },
       ownership: {
         state: o.state,
@@ -322,6 +336,11 @@ export class RoomSession {
         want: o.want,
         status: o.status,
         lastEvent: o.lastEvent ? o.lastEvent.reason : null,
+        handover: hoRaw ? {
+          requesterName: hoPeer ? hoPeer.name : 'Another device',
+          remainingMs: hoRaw.remainingMs,
+          paused: hoRaw.paused,
+        } : null,
       },
       mic: { actual: this.mic.actual, desired: this.mic.desired, inconsistent: !!this.mic.inconsistent },
       participants,
@@ -476,7 +495,12 @@ export class RoomSession {
   _emit(now, force = false) {
     const snap = this.snapshot(now);
     const { ownerHeldMs, ...rest } = snap.ownership;
-    const sig = JSON.stringify({ ...snap, ownership: rest });
+    // Countdown changes 10x/s; bucket them so the UI is only notified on
+    // half-second steps (the pill interpolates locally between snapshots).
+    const ho = rest.handover
+      ? { ...rest.handover, remainingMs: Math.ceil(rest.handover.remainingMs / 500) * 500 }
+      : null;
+    const sig = JSON.stringify({ ...snap, ownership: { ...rest, handover: ho } });
     if (!force && sig === this.lastSig) return;
     this.lastSig = sig;
     this.onChange(snap);

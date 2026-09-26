@@ -29,6 +29,8 @@ $('join').addEventListener('click', () => action('join'));
 $('decline').addEventListener('click', () => action('decline'));
 $('leave').addEventListener('click', () => action('leave'));
 $('toggle-btn').addEventListener('click', () => action('toggle'));
+$('handover-accept').addEventListener('click', () => action('handover-accept'));
+$('handover-wait').addEventListener('click', () => action('handover-wait'));
 for (const r of document.querySelectorAll('input[name=mode]')) {
   r.addEventListener('change', () => settingsPatch({ mode: r.value }));
 }
@@ -190,7 +192,10 @@ function render() {
   // Ownership line
   $('owner-block').hidden = !joined;
   if (joined) $('owner-line').textContent = ownerLine(s, performance.now() - stateAt);
-  $('toggle-btn').hidden = !joined || s.mode !== 'toggle';
+  const ho = s.ownership.handover;
+  $('handover').hidden = !joined || !ho;
+  if (ho) $('handover-line').textContent = `${ho.requesterName} wants the microphone · ${ho.paused ? 'paused while you speak' : `${Math.ceil(ho.remainingMs / 1000)}s`}`;
+  $('toggle-btn').hidden = !joined || s.mode !== 'toggle' || !!ho;
   $('toggle-btn').textContent = s.input.toggle === 'ON' ? 'Release microphone' : 'Take microphone';
 
   // Microphone selected in Meet (observed, never chosen by us)
