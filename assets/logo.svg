@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="HotMic">
+  <defs>
+    <linearGradient id="hot" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FF3D00"/>
+      <stop offset="1" stop-color="#FF9100"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1D2230"/>
+      <stop offset="1" stop-color="#12151C"/>
+    </linearGradient>
+  </defs>
+  <!-- matches tools/make-icons.mjs (unit geometry x 128) -->
+  <rect x="2" y="2" width="124" height="124" rx="28.8" fill="url(#card)"/>
+  <path d="M 100 78.3 A 37.1 37.1 0 0 1 28 78.3" fill="none" stroke="#E8ECF4" stroke-width="12.8" stroke-linecap="round"/>
+  <rect x="59.1" y="108.2" width="9.7" height="15.3" rx="4.9" fill="#E8ECF4"/>
+  <rect x="44.2" y="17.9" width="39.7" height="62.7" rx="19.8" fill="url(#hot)"/>
+</svg>

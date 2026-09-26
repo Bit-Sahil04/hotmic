@@ -116,7 +116,7 @@ try {
     (await A.micMuted(meetA)) && (await B.micMuted(meetB)) && (await text(A, popA.sessionId, 'owner-line')) === 'Microphone available');
 
   // --- Server-blindness (custom-server mode only; the built-in cloud check is
-  // covered by mesh unit tests and the peerjs-probe tool)
+  // covered by the mesh unit tests).
   if (!BUILTIN) {
     const blobs = JSON.stringify([...store.rooms.values()].map((r) => [...r.inboxes.values()].map((b) => b.queue)));
     check('server never saw names or meeting code', !/Sahil|Samir|abc-defg-hij/.test(blobs) && ![...store.rooms.keys()].some((k) => k.includes('abc')));
