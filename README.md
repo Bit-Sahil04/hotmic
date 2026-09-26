@@ -14,6 +14,9 @@
 - Push-to-talk (default **Space**) or toggle mode. Works alone too.
 - Hand-over is a visible **request** with Wait / Accept — never a silent grab, and it never cuts
   off a speaking owner.
+- Optional **feedback guard**: while you are sharing and not talking (mic muted or unknown),
+  HotMic can mute **this tab's audio output** so your speakers don't feed another laptop's
+  microphone; sound returns when you talk. Settings toggle, no hotkey.
 - Controls Meet's mute state only; **no audio is ever transmitted** — only small encrypted
   control messages. Chrome 111+, Windows and macOS, no build step.
 

@@ -76,6 +76,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   mode: 'ptt',        // 'ptt' | 'toggle'
   pttKey: 'Space',    // KeyboardEvent.code
   discoveryUrl: '',   // WebRTC rendezvous server, e.g. https://hotmic.example.com ('' = off)
+  alsoMuteAudio: false, // mute this tab's audio while not talking (speaker->mic feedback guard)
 });
 
 /** Subset of config the content script needs (it cannot import ES modules). */

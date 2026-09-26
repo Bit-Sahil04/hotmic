@@ -65,6 +65,7 @@ async function updateSettings(patch = {}) {
     if (n) next.displayName = n;
   }
   if (patch.mode === 'ptt' || patch.mode === 'toggle') next.mode = patch.mode;
+  if (typeof patch.alsoMuteAudio === 'boolean') next.alsoMuteAudio = patch.alsoMuteAudio;
   if (typeof patch.pttKey === 'string' && /^[A-Za-z0-9]{1,24}$/.test(patch.pttKey) && patch.pttKey !== 'Escape') {
     next.pttKey = patch.pttKey;
   }
@@ -79,6 +80,8 @@ async function updateSettings(patch = {}) {
     e.session?.setDisplayName(settings.displayName);
     e.session?.setMode(settings.mode);
     e.session?.setHotkey(settings.pttKey);
+    if (e.session) syncTabAudio(e, e.session.snapshot());
+    else restoreTabAudio(e);
     post(e, { type: 'config', config: contentConfig(), settings });
   }
   pushAllPopups();
@@ -158,6 +161,7 @@ function startSession(entry, meetingId, mic) {
       post(entry, { type: 'state', snapshot: snap });
       pushPopups(entry.tabId);
       updateBadge(entry.tabId, snap);
+      syncTabAudio(entry, snap);
     },
     onPersist: ({ participation }) => persistConsent(entry, meetingId, participation),
   });
@@ -180,6 +184,7 @@ function startSession(entry, meetingId, mic) {
 function endSession(entry, reason) {
   const s = entry.session;
   if (!s) return;
+  restoreTabAudio(entry); // never leave a tab muted behind a dead session
   s.dispose(reason);
   entry.session = null;
   entry.crypto = null;
@@ -200,6 +205,26 @@ function scheduleTransportIdleStop() {
   transportIdleTimer = setTimeout(() => {
     if (![...tabs.values()].some((e) => e.session)) transport.stop();
   }, 30000);
+}
+
+// ---------------------------------------------------------------------------
+// Optional feedback-loop guard: while microphone sharing is active and this
+// device's Meet mic is not UNMUTED, mute the tab's audio output. Tab-level only
+// (chrome.tabs mute needs no extra permission), automatic — no hotkey. Restored
+// when the user talks again, turns the setting off, or the session ends.
+function syncTabAudio(entry, snap) {
+  const want = !!(settings.alsoMuteAudio
+    && snap.participation === 'SHARING_JOINED'
+    && snap.mic.actual !== 'UNMUTED');
+  if (want === !!entry.audioMutedByUs) return;
+  entry.audioMutedByUs = want;
+  chrome.tabs.update(entry.tabId, { muted: want }).catch(() => { /* tab gone */ });
+}
+
+function restoreTabAudio(entry) {
+  if (!entry.audioMutedByUs) return;
+  entry.audioMutedByUs = false;
+  chrome.tabs.update(entry.tabId, { muted: false }).catch(() => { /* tab gone */ });
 }
 
 function doAction(entry, action) {

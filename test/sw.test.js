@@ -31,7 +31,7 @@ function installChromeMock() {
     },
     storage: { local: area('local'), session: area('session') },
     action: { setBadgeText: async () => {}, setBadgeBackgroundColor: async () => {} },
-    tabs: { query: async () => [] },
+    tabs: { query: async () => [], updates: [], async update(id, props) { this.updates.push({ id, ...props }); return { id, mutedInfo: { muted: !!props.muted } }; } },
     scripting: { executeScript: async () => {} },
     offscreen: {
       created: [], closed: 0,
@@ -172,5 +172,66 @@ test('service worker: WebRTC discovery option — built-in cloud default, URL va
   assert.equal(last(meet, 'state').snapshot.transport, 'lost');
   await sleep(1100);
   assert.equal(chrome.offscreen.created.length, 2, 'offscreen document recreated');
+  meet.onDisconnect.fire();
+});
+
+test('service worker: also-mute-audio mutes tab audio while not talking (feedback guard)', async () => {
+  const chrome = globalThis.chrome;
+  const url = 'https://meet.google.com/mut-emut-emut';
+  const tabUpdates = (id) => chrome.tabs.updates.filter((u) => u.id === id);
+
+  const setup = makePortPair('hotmic-popup', {});
+  chrome.runtime.onConnect.fire(setup);
+  setup.onMessage.fire({ type: 'subscribe', tabId: 9 });
+  setup.onMessage.fire({ type: 'settings', patch: { discoveryUrl: 'off' } });
+  await sleep(30);
+
+  const meet = makePortPair('hotmic-meet', { tab: { id: 9 }, frameId: 0 });
+  chrome.runtime.onConnect.fire(meet);
+  meet.onMessage.fire({ type: 'hello', pageId: 'p9' });
+  meet.onMessage.fire({ type: 'meet', href: url, inCall: true, mic: 'MUTED', cause: 'initial' });
+  await sleep(100);
+
+  const popup = makePortPair('hotmic-popup', {});
+  chrome.runtime.onConnect.fire(popup);
+  popup.onMessage.fire({ type: 'subscribe', tabId: 9 });
+  popup.onMessage.fire({ type: 'action', action: 'join' });
+  await sleep(20);
+  assert.equal(tabUpdates(9).length, 0, 'feature off (default): the tab is never touched');
+
+  // Feature on: sharing + mic muted => tab audio muted (tab level, no hotkey).
+  popup.onMessage.fire({ type: 'settings', patch: { alsoMuteAudio: true } });
+  await sleep(20);
+  assert.equal(tabUpdates(9).at(-1)?.muted, true, 'tab muted while sharing and not talking');
+
+  // Talking (mic UNMUTED) restores the tab audio.
+  meet.onMessage.fire({ type: 'key', action: 'down', repeat: false });
+  await sleep(120);
+  const cmd = last(meet, 'set-mute');
+  assert.equal(cmd.muted, false, 'unmute requested');
+  meet.onMessage.fire({ type: 'meet', href: url, inCall: true, mic: 'UNMUTED', cause: 'command' });
+  meet.onMessage.fire({ type: 'mic-result', id: cmd.id, ok: true, mic: 'UNMUTED' });
+  await sleep(20);
+  assert.equal(last(meet, 'state').snapshot.ownership.state, 'OWNER');
+  assert.equal(tabUpdates(9).at(-1)?.muted, false, 'tab audio restored while talking');
+
+  // UNKNOWN mic counts as not talking (fail closed).
+  meet.onMessage.fire({ type: 'meet', href: url, inCall: true, mic: 'UNKNOWN', cause: 'external' });
+  await sleep(20);
+  assert.equal(tabUpdates(9).at(-1)?.muted, true, 'UNKNOWN mic mutes tab audio again');
+
+  // Turning the setting off restores the audio immediately.
+  popup.onMessage.fire({ type: 'settings', patch: { alsoMuteAudio: false } });
+  await sleep(20);
+  assert.equal(tabUpdates(9).at(-1)?.muted, false, 'setting off restores tab audio');
+
+  // Re-enable, then leave the call: session teardown must restore audio too.
+  popup.onMessage.fire({ type: 'settings', patch: { alsoMuteAudio: true } });
+  await sleep(20);
+  assert.equal(tabUpdates(9).at(-1)?.muted, true, 'muted again after re-enable');
+  meet.onMessage.fire({ type: 'meet', href: url, inCall: false, mic: 'UNKNOWN', cause: 'external' });
+  await sleep(20);
+  assert.equal(last(meet, 'state').snapshot.ended, true);
+  assert.equal(tabUpdates(9).at(-1)?.muted, false, 'session end restores tab audio');
   meet.onDisconnect.fire();
 });

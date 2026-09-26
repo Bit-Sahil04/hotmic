@@ -34,6 +34,7 @@ $('handover-wait').addEventListener('click', () => action('handover-wait'));
 for (const r of document.querySelectorAll('input[name=mode]')) {
   r.addEventListener('change', () => settingsPatch({ mode: r.value }));
 }
+$('also-mute-audio').addEventListener('change', () => settingsPatch({ alsoMuteAudio: $('also-mute-audio').checked }));
 $('display-name').addEventListener('input', () => { nameDirty = true; });
 $('display-name').addEventListener('change', () => { nameDirty = false; settingsPatch({ displayName: $('display-name').value }); });
 $('discovery-url').addEventListener('input', () => { urlDirty = true; $('discovery-url-error').hidden = true; });
@@ -130,6 +131,7 @@ function render() {
 
   // settings (always visible)
   for (const r of document.querySelectorAll('input[name=mode]')) r.checked = r.value === settings.mode;
+  $('also-mute-audio').checked = !!settings.alsoMuteAudio;
   $('key-heading').textContent = settings.mode === 'toggle' ? 'Toggle key' : 'PTT key';
   if (!capturingKey) $('ptt-key').textContent = `[ ${keyLabel(settings.pttKey)} ]`;
   if (!nameDirty && document.activeElement !== $('display-name')) $('display-name').value = settings.displayName;
