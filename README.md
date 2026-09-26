@@ -43,14 +43,14 @@ sequenceDiagram
     participant A as Device A (claims the room slot)
     participant B as Device B
 
-    A->>C: connect with a random id, claim slot "h<roomTag>"
-    Note over C: roomTag = PBKDF2 hash of the meeting code — the code itself is never sent
+    A->>C: connect with a random id, claim slot h + roomTag
+    Note over C: roomTag = PBKDF2 hash of the meeting code - the code itself is never sent
     B->>C: dial the same slot
     C->>A: relay B's AES-GCM-sealed WebRTC offer (ciphertext)
     A->>C: relay sealed answer + LAN-only ICE candidates
     B->>A: direct data channel opens (host candidates only, typically LAN)
     A->>B: sealed challenge — prove knowledge of the room key
-    B->>A: sealed reply — link accepted; everything further flows device-to-device
+    B->>A: sealed reply. Link accepted - everything further flows device-to-device
 ```
 
 | The cloud **sees** | The cloud **never sees** |
