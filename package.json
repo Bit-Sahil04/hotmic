@@ -9,7 +9,8 @@
     "smoke": "node tools/browser-smoke.mjs",
     "smoke:webrtc": "node tools/browser-webrtc-smoke.mjs",
     "rendezvous": "node rendezvous/server.mjs",
-    "icons": "node tools/make-icons.mjs"
+    "icons": "node tools/make-icons.mjs",
+    "pack": "node tools/pack.mjs"
   },
   "engines": {
     "node": ">=18"

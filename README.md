@@ -153,6 +153,45 @@ All protocol logic is pure (clock, transport and adapter injected), so the same 
 service worker and in the simulator. After **every simulated event**, tests assert that no two
 participants are ever unmuted.
 
+## Publishing to the Chrome Web Store
+
+ builds  (runtime files only) for the
+[Developer Dashboard](https://chrome.google.com/webstore/devconsole). Checklist:
+
+- [ ] Developer account (one-time $5 fee, 2-step verification), then **Add new item** → upload the zip.
+- [ ] **Store listing**: description, category, ≥1 screenshot (1280×800), the required small
+  promo image (440×280), and the 128×128 icon (already in the package).
+- [ ] **Privacy tab**: single purpose (); justify each
+  permission —  settings only ·  optional LAN helper ·
+   Meet mic toggle ·  WebRTC mesh · host ;
+  declare **no remote code** (PeerJS is vendored); data usage = display name shared with
+  nearby users only; privacy policy URL → this repo's [PRIVACY.md](PRIVACY.md).
+- [ ] **Test instructions**: join one Meet call from two Chrome profiles, hold PTT.
+- [ ] Submit for review (MV3, no remote code → standard review).
+
+\
+> hotmic@1.3.1 pack
+> node tools/pack.mjs
+
+D:Desktopprojectslocalhotmicdisthotmic-v1.3.1.zip  111.1 KB
+Upload this zip at https://chrome.google.com/webstore/devconsole
+## Publishing to the Chrome Web Store
+
+`npm run pack` builds `dist/hotmic-v<version>.zip` (runtime files only) for the
+[Developer Dashboard](https://chrome.google.com/webstore/devconsole). Checklist:
+
+- [ ] Developer account (one-time $5 fee, 2-step verification), then **Add new item** → upload
+  the zip.
+- [ ] **Store listing**: description, category, at least 1 screenshot (1280×800), the required
+  small promo image (440×280), and the 128×128 icon (already in the package).
+- [ ] **Privacy tab**: single purpose (`One microphone per meeting room`); justify each
+  permission — `storage` settings only · `nativeMessaging` optional LAN helper · `scripting`
+  Meet mic toggle · `offscreen` WebRTC mesh · host `meet.google.com`; declare **no remote code**
+  (PeerJS is vendored); data usage = display name shared with nearby users only; privacy policy
+  URL → this repo's [PRIVACY.md](PRIVACY.md).
+- [ ] **Test instructions**: join one Meet call from two Chrome profiles, hold PTT.
+- [ ] Submit for review (MV3, no remote code → standard review).
+
 ## Known limitations
 
 - **Meet DOM changes** — Meet has no API; if its mic toggle changes, state becomes `UNKNOWN` and
