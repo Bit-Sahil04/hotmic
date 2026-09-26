@@ -86,6 +86,7 @@ export class OwnershipManager {
     this.backoffUntil = -Infinity;
     this.sentTimes = new Map();      // our heartbeat seq -> local send time
     this.handover = null;            // {id, endsAt, paused} while someone waits for our mic
+    this.declined = null;            // {id, since} hand-over request the owner cancelled
     this.lastEvent = null;           // {reason, at}
     this.status = '';                // human-readable reason we're waiting
   }
@@ -101,6 +102,7 @@ export class OwnershipManager {
     this.want = false;
     this.wantSince = null;
     this.handover = null;
+    this.declined = null;
     if (this.holdsRecord) this._setRecord({ epoch: this.record.epoch + 1, owner: null }, now, reason);
     if (this.fsm.is(O.OWNER)) this.fsm.transition(O.RELEASED, reason);
     if (this.fsm.is(O.REQUESTED, O.RELEASED)) this.fsm.transition(O.NO_OWNER, reason);
@@ -263,15 +265,25 @@ export class OwnershipManager {
         return;
       }
       if (!this.handover || this.handover.id !== req.id) {
+        // A Wait/cancel suppresses re-requesting from the same press; a fresh
+        // press (new wantSince) may request again.
+        if (this.declined && (this.declined.id !== req.id || this.declined.since !== req.wantSince)) this.declined = null;
+        if (this.declined) return;
         this.handover = { id: req.id, endsAt: now + cfg.HANDOVER_COUNTDOWN_MS, paused: false };
         this.lastEvent = { reason: `${req.name} requested the microphone`, at: now };
         this.hooks.requestSend('handover requested');
       }
       const act = this.hooks.activity(now);
       const remaining = this.handover.endsAt - now;
-      // The final stretch of the countdown pauses while the owner is speaking,
-      // so an automatic hand-over never cuts them off mid-sentence. It resumes
-      // once they have been quiet for ACTIVITY_IDLE_MS (or the signal is gone).
+      // Auto-accept: the holder has not spoken for HANDOVER_AUTO_ACCEPT_MS — pass
+      // the mic without waiting out the window. The final stretch of the countdown
+      // still pauses while the owner is speaking, so an automatic hand-over never
+      // cuts them off mid-sentence.
+      if (act.known && act.idleMs >= cfg.HANDOVER_AUTO_ACCEPT_MS) {
+        this.handover = null;
+        this._relinquish(now, `microphone transferred to ${req.name}`, { to: req, involuntary: true });
+        return;
+      }
       const speaking = act.known && act.idleMs < cfg.ACTIVITY_IDLE_MS;
       this.handover.paused = !!(speaking && remaining <= cfg.HANDOVER_PAUSE_ZONE_MS);
       if (this.handover.paused) {
@@ -297,11 +309,14 @@ export class OwnershipManager {
   }
 
   /** Wait: deny the hand-over for now — restart the countdown window. */
-  deferHandover(now) {
+  /** Wait: cancel the pending request. The requester may ask again with a new press. */
+  cancelHandover(now) {
     if (this.fsm.state !== O.OWNER || !this.handover) return false;
-    this.handover = { id: this.handover.id, endsAt: now + this.config.HANDOVER_COUNTDOWN_MS, paused: false };
-    this.lastEvent = { reason: 'hand-over request delayed', at: now };
-    this.hooks.requestSend('hand-over delayed');
+    const p = this.peers.get(this.handover.id);
+    this.declined = p ? { id: p.id, since: p.wantSince } : null;
+    this.lastEvent = { reason: 'hand-over request cancelled', at: now };
+    this.handover = null;
+    this.hooks.requestSend('handover cancelled');
     return true;
   }
 
@@ -362,6 +377,7 @@ export class OwnershipManager {
 
     if (wasMine && !isMine) {
       this.handover = null;
+      this.declined = null;
       if (this.fsm.is(O.OWNER)) {
         this.fsm.transition(O.RELEASED, source);
         this._lost(now, rec.owner ? 'microphone taken by another device' : 'ownership expired');
@@ -387,6 +403,7 @@ export class OwnershipManager {
 
   _relinquish(now, reason, { to = null, handoff = false, involuntary = false }) {
     this.handover = null;
+    this.declined = null;
     const next = to || (handoff ? this._pickRequester(now) : null);
     this._setRecord({ epoch: this.record.epoch + 1, owner: next ? next.id : null }, now, reason);
     if (this.fsm.is(O.OWNER)) this.fsm.transition(O.RELEASED, reason);

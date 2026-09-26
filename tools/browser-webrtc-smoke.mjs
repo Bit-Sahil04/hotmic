@@ -84,14 +84,26 @@ try {
     const t = await text(A, popA.sessionId, 'handover-line');
     return t.startsWith('Samir wants the microphone') ? t : false;
   }, 'A sees the request', 6000).catch(() => false);
-  check('B request => A sees "Samir wants the microphone · Ns" (island + popup), no transfer',
-    !!req && (await B.micMuted(meetB)) && !(await A.micMuted(meetA)), req || 'no request line');
-  check('A does not pass the mic within 5 s of the request', (await B.micMuted(meetB)) && !(await A.micMuted(meetA)));
-  // Wait restarts the window; the request stays visible.
+  const bReq = await text(B, popB.sessionId, 'owner-line');
+  check('B request => A sees "Samir wants the microphone · Ns"; B sees "Requesting microphone from Sahil"',
+    !!req && (await B.micMuted(meetB)) && !(await A.micMuted(meetA)) && bReq === 'Requesting microphone from Sahil',
+    `${req || 'no request line'} | B: "${bReq}"`);
+  // Wait cancels the request; the holder keeps the mic.
   await A.eval(popA.sessionId, `document.getElementById('handover-wait').click()`);
   await sleep(1500);
-  check('Wait keeps the mic with A and the request visible',
-    !(await A.micMuted(meetA)) && /Samir wants the microphone/.test(await text(A, popA.sessionId, 'handover-line')));
+  check('Wait cancels the request (island/popup row hidden) and A keeps the mic',
+    !(await A.micMuted(meetA)) && (await B.micMuted(meetB)) &&
+    !(await A.eval(popA.sessionId, `!document.getElementById('handover').hidden`)));
+  // Holding the key does not re-request; B must release and press again.
+  await B.key(meetB, 'keyUp');
+  await sleep(1000);
+  await B.key(meetB, 'rawKeyDown');
+  const req2 = await waitUntil(async () => {
+    const visible = await A.eval(popA.sessionId, `!document.getElementById('handover').hidden`);
+    const t = await text(A, popA.sessionId, 'handover-line');
+    return visible && t.startsWith('Samir wants the microphone') ? t : false;
+  }, 'fresh press re-requests', 6000).catch(() => false);
+  check('a fresh press shows the request again', !!req2, req2 || 'no re-request');
   // Accept passes the mic immediately.
   await A.eval(popA.sessionId, `document.getElementById('handover-accept').click()`);
   const handover = await waitUntil(async () => (await A.micMuted(meetA)) && !(await B.micMuted(meetB)), 'handover', 6000).catch(() => false);

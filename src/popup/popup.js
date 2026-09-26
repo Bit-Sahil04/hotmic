@@ -195,6 +195,7 @@ function render() {
   const ho = s.ownership.handover;
   $('handover').hidden = !joined || !ho;
   if (ho) $('handover-line').textContent = `${ho.requesterName} wants the microphone · ${ho.paused ? 'paused while you speak' : `${Math.ceil(ho.remainingMs / 1000)}s`}`;
+  else $('handover-line').textContent = '';
   $('toggle-btn').hidden = !joined || s.mode !== 'toggle' || !!ho;
   $('toggle-btn').textContent = s.input.toggle === 'ON' ? 'Release microphone' : 'Take microphone';
 

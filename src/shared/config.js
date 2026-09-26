@@ -14,6 +14,7 @@ export const CONFIG = Object.freeze({
 
   // ---- Ownership -----------------------------------------------------------
   HANDOVER_COUNTDOWN_MS: 10000,  // request shows this long before the mic is passed
+  HANDOVER_AUTO_ACCEPT_MS: 3000, // auto-accept when the holder has been quiet this long
   HANDOVER_PAUSE_ZONE_MS: 3000,  // in this final stretch the countdown pauses while the owner speaks
   CLAIM_TIMEOUT_MS: 2000,        // claim not agreed within this => abandon
   CLAIM_RETRY_BACKOFF_MS: 500,

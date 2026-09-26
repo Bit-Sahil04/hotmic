@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { World, IDS } from './sim.js';
 import { CONFIG } from '../src/shared/config.js';
 import { TRANSPORT } from '../src/background/session.js';
+import '../src/content/overlay.js';
+const Overlay = globalThis.HotMicOverlay;
 
 const settle = (w) => w.run(2500); // > SYNC_MS so everyone has heard everyone
 
@@ -263,8 +265,42 @@ test('countdown pauses while the owner speaks during the final 3 s', () => {
   const remainingFrozen = a.session.ownership.handoverView(w.clock.now()).remainingMs;
   assert.ok(remainingFrozen > 0, 'window not expired while speaking');
   speak.stop();                  // activity dies down
-  w.run(CONFIG.ACTIVITY_IDLE_MS + 3200); // quiet => resumes and completes
+  w.run(3400);                   // quiet => window resumes and completes
   assert.deepEqual(w.owners(), ['samir'], 'transfers once the owner goes quiet');
+  expectSafe(w);
+});
+
+test('request auto-accepts when the holder stays quiet for 3 s', () => {
+  const w = new World();
+  const a = w.add('sahil', { join: true, mode: 'toggle' });
+  const b = w.add('samir', { join: true });
+  settle(w);
+  w.tap('sahil');
+  w.run(300);
+  const quiet = setIntervalSim(w, () => a.session.onActivity(0.0), 200); // known-silent holder
+  w.pttDown('samir');
+  w.run(2500);                   // holder silent (never spoke) => auto-accept on sight
+  assert.deepEqual(w.owners(), ['samir'], 'passed automatically without waiting the window');
+  assert.equal(a.meet.state, 'MUTED');
+  assert.equal(b.meet.state, 'UNMUTED');
+  quiet.stop();
+  expectSafe(w);
+});
+
+test('speaking holder is never auto-accepted, even past 3 s of silence elsewhere', () => {
+  const w = new World();
+  const a = w.add('sahil', { join: true, mode: 'toggle' });
+  w.add('samir', { join: true });
+  settle(w);
+  w.tap('sahil');
+  w.run(300);
+  const speak = setIntervalSim(w, () => a.session.onActivity(0.3), 200);
+  w.pttDown('samir');
+  w.run(12000);                  // speaking the whole time: no auto-accept, no expiry
+  assert.deepEqual(w.owners(), ['sahil'], 'an actively speaking holder keeps the mic');
+  speak.stop();
+  w.run(CONFIG.HANDOVER_AUTO_ACCEPT_MS + 400);
+  assert.deepEqual(w.owners(), ['samir'], 'passes 3 s after they stop speaking');
   expectSafe(w);
 });
 
@@ -286,7 +322,7 @@ test('accept passes the microphone immediately', () => {
   expectSafe(w);
 });
 
-test('wait restarts the window; voluntary release still hands over', () => {
+test('wait cancels the request; a fresh press may ask again; release still hands over', () => {
   const w = new World();
   const a = w.add('sahil', { join: true, mode: 'toggle' });
   const b = w.add('samir', { join: true });
@@ -294,16 +330,26 @@ test('wait restarts the window; voluntary release still hands over', () => {
   w.tap('sahil');
   w.run(300);
   w.pttDown('samir');
-  w.run(8000);
+  w.run(4000);                   // request reached the owner
+  assert.ok(a.session.ownership.handoverView(w.clock.now()), 'request pending');
+  a.session.cancelHandover();    // Wait: cancel the request
+  w.run(100);
+  assert.equal(a.session.ownership.handoverView(w.clock.now()), null, 'request gone');
   assert.deepEqual(w.owners(), ['sahil']);
-  a.session.deferHandover();     // Wait: window restarts
-  w.run(9500);
-  assert.deepEqual(w.owners(), ['sahil'], 'new window still running');
-  w.run(1000);                   // restarted window expires
+  w.run(12000);                  // holding the key does not re-request after a cancel
+  assert.deepEqual(w.owners(), ['sahil'], 'cancelled request stays cancelled');
+  assert.equal(a.session.ownership.handoverView(w.clock.now()), null);
+  w.pttUp('samir');
+  w.run(300);
+  w.pttDown('samir');            // a fresh press may ask again
+  w.run(4000);
+  assert.ok(a.session.ownership.handoverView(w.clock.now()), 're-request visible');
+  a.session.acceptHandover();
+  w.run(100);
   assert.deepEqual(w.owners(), ['samir']);
   // Voluntary release path is unchanged: owner releases => waiting requester gets it.
   const w2 = new World();
-  const c = w2.add('sahil', { join: true, mode: 'toggle' });
+  w2.add('sahil', { join: true, mode: 'toggle' });
   w2.add('samir', { join: true });
   settle(w2);
   w2.tap('sahil');
@@ -314,6 +360,25 @@ test('wait restarts the window; voluntary release still hands over', () => {
   w2.run(300);
   assert.deepEqual(w2.owners(), ['samir']);
   expectSafe(w2);
+  expectSafe(w);
+});
+
+test('requester sees "Requesting microphone from <owner>" while waiting', () => {
+  const w = new World();
+  w.add('sahil', { join: true, mode: 'toggle' });
+  const b = w.add('samir', { join: true });
+  settle(w);
+  w.tap('sahil');
+  w.run(300);
+  w.pttDown('samir');
+  w.run(4000);
+  const s = b.session.snapshot(w.clock.now());
+  const { ownerLine } = Overlay;
+  assert.equal(ownerLine(s, 0), 'Requesting microphone from Sahil');
+  w.pttUp('samir');
+  w.run(300);
+  const s2 = b.session.snapshot(w.clock.now());
+  assert.match(ownerLine(s2, 0), /Sahil has the microphone/);
   expectSafe(w);
 });
 

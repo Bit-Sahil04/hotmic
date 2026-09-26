@@ -44,7 +44,7 @@
     if (o.ownerIsSelf && o.state === 'OWNER') return `You have the microphone · ${fmtDuration(held)}`;
     if (o.ownerId && !o.ownerIsSelf) {
       const line = `${o.ownerName} has the microphone${held === null ? '' : ` · ${fmtDuration(held)}`}`;
-      return o.state === 'REQUESTED' ? `${line} — you're next` : line;
+      return o.state === 'REQUESTED' ? `Requesting microphone from ${o.ownerName}` : line;
     }
     if (o.state === 'REQUESTED') return 'Requesting microphone…';
     return 'Microphone available';
@@ -128,7 +128,7 @@
       const isOwner = o.ownerIsSelf && o.state === 'OWNER';
       pill.hidden = !joined;
       pill.className = `pill status${joined && o.handover ? ' request' : ''}`;
-      const showHint = joined && !isOwner && !snap.warning && grabHint(snap);
+      const showHint = joined && !isOwner && o.state !== 'REQUESTED' && !snap.warning && grabHint(snap);
       hintPill.hidden = !showHint;
       if (showHint) $('.hint-text').innerHTML = `${grabHint(snap).replace(/^(Press|Hold) (\S+)/, '$1 <span class="kbd">$2</span>')}`;
       if (!joined) return;
@@ -138,7 +138,7 @@
         toggle.hidden = true;
         dot.className = 'dot other';
         const remaining = Math.max(0, o.handover.remainingMs - (o.handover.paused ? 0 : performance.now() - snapAt));
-        text.textContent = `${o.handover.requesterName} wants the microphone · ${o.handover.paused ? 'paused' : `${Math.ceil(remaining / 1000)}s`}`;
+        text.textContent = `${o.handover.requesterName} wants the microphone · ${o.handover.paused ? 'paused while you speak' : `${Math.ceil(remaining / 1000)}s`}`;
         text.className = 'text';
         return;
       }

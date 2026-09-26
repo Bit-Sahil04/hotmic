@@ -188,8 +188,8 @@ export class RoomSession {
     if (this.ownership.acceptHandover(this.clock.now())) this._evaluate();
   }
 
-  deferHandover() {
-    if (this.ownership.deferHandover(this.clock.now())) this._evaluate();
+  cancelHandover() {
+    if (this.ownership.cancelHandover(this.clock.now())) this._evaluate();
   }
 
   /** Browser-reported audio level of Meet's outgoing track (WebRTC stats). Local only. */

@@ -210,7 +210,7 @@ function doAction(entry, action) {
   else if (action === 'leave') s.leaveSharing();
   else if (action === 'toggle') s.uiToggle();
   else if (action === 'handover-accept') s.acceptHandover();
-  else if (action === 'handover-wait') s.deferHandover();
+  else if (action === 'handover-wait') s.cancelHandover();
 }
 
 function post(entry, msg) {
@@ -391,3 +391,4 @@ chrome.runtime.onInstalled.addListener(async () => {
  * @property {Promise<void>} rx
  * @property {Promise<void>} tx
  */
+

@@ -232,15 +232,17 @@ agreement instead of unanimous agreement (a V2 topic).
   silent owner after `LEASE_TIMEOUT_MS` (3 s) → `NO_OWNER` → next request can acquire. The owner is
   always muted before anyone else could claim.
 * **Hand-over is a request, not a grab.** When someone wants the mic while you own it, your
-  island turns yellow: *"Samir wants the microphone · 10s"* with **Wait** and **Accept**.
-  **Accept** passes the mic immediately. **Wait** restarts the 10 s window (`HANDOVER_COUNTDOWN_MS`).
-  If you do nothing, the mic passes when the window ends — but in the final
-  `HANDOVER_PAUSE_ZONE_MS` (3 s) the countdown pauses while Meet's WebRTC stats still show you
-  speaking, and resumes once you have been quiet for `ACTIVITY_IDLE_MS` (1.2 s). An automatic
-  hand-over therefore never cuts you off mid-sentence. A voluntary release (PTT up, toggle off,
-  mute in Meet) still hands over immediately, and the popup shows the same request with the same
-  buttons. While you do not own the mic, the island shows how to grab it, e.g.
-  *"Press M to toggle mic"* or *"Hold Space to enable mic"*, from your mode and hotkey settings.
+  island turns yellow: *"Samir wants the microphone · 10s"* with **Wait** and **Accept**;
+  the requester's island shows *"Requesting microphone from Sahil"*. **Accept** passes the mic
+  immediately. **Wait** cancels the request — the requester keeps holding the key but is not
+  re-queued; a fresh press asks again. If nobody acts, the mic passes automatically as soon as
+  you have not spoken for `HANDOVER_AUTO_ACCEPT_MS` (3 s), and at the latest when the
+  `HANDOVER_COUNTDOWN_MS` (10 s) window ends. In the final `HANDOVER_PAUSE_ZONE_MS` (3 s) the
+  window pauses while Meet's WebRTC stats still show you speaking, so an automatic hand-over
+  never cuts you off mid-sentence. A voluntary release (PTT up, toggle off, mute in Meet) still
+  hands over immediately, and the popup shows the same request with the same buttons. While you
+  do not own the mic, the island shows how to grab it, e.g. *"Press M to toggle mic"* or
+  *"Hold Space to enable mic"*, from your mode and hotkey settings.
 * A pre-empted user's intent is cleared (PTT needs a new press; toggle turns OFF), so there is no
   ping-pong.
 * **Joining late.** A device must listen for `SYNC_MS` before it may claim, so a late joiner
@@ -339,7 +341,7 @@ npm run smoke:webrtc   # two real Chrome instances + local rendezvous server, ov
 | 6–8 | Prompt, join alone, decline | `consent.js`, overlay, popup · protocol tests |
 | 9–11 | PTT / toggle acquire + release | `input.js`, `ownership.js` · tests + smoke |
 | 12–13 | Single owner, others muted | agreement rule · simultaneous/lossy tests |
-| 14   | Hand-over request: 10 s window, Wait restarts, Accept passes now, final 3 s pauses while speaking | `HANDOVER_*_MS` · tests + smoke |
+| 14   | Hand-over request: 10 s window, Wait cancels, Accept passes now, auto-accept after 3 s quiet, final 3 s pauses while speaking | `HANDOVER_*_MS` · tests + smoke |
 | 16 | Debounce | `input.js` · repeat/bounce/rapid-toggle tests |
 | 17 | Manual mute/unmute reconciled | `mic.js`, `ownership.onMicExternal` · tests + smoke |
 | 18–19 | Lease expiry, fail closed | lease/fencing · disconnect/partition/sleep/transport tests |
