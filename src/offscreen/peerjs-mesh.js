@@ -74,6 +74,11 @@ export class PeerJsRoomMesh extends RoomMesh {
       peer.on('disconnected', () => {
         if (this.running) { this._dbg('member disconnected -> reconnect'); try { peer.reconnect(); } catch { /* ignore */ } }
       });
+      // Members also accept inbound links: gossip makes the lower id dial the
+      // higher one directly, so this is what turns the star around the master
+      // slot into a full mesh (without it every member hears only the master
+      // and rooms silently split into 2-device islands).
+      peer.on('connection', (conn) => this._onInboundConn(conn));
     });
     return this.memberPeerReady;
   }

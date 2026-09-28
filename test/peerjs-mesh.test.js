@@ -214,6 +214,31 @@ test('master death: the slot frees and a member re-claims it', async () => {
   B.mesh.stop();
 });
 
+test('three devices form one full-mesh room (members link to each other)', async () => {
+  const clock = new AsyncClock();
+  const cloud = new FakeCloud(clock);
+  const got = [];
+  const A = mkMesh(cloud, 'a'.repeat(32));
+  const B = mkMesh(cloud, 'b'.repeat(32));
+  const C = mkMesh(cloud, 'c'.repeat(32), { onData: (d) => got.push(['C', d]) });
+  A.mesh.start();
+  await clock.run(2000);
+  assert.equal(A.mesh.role, 'master');
+  B.mesh.start();
+  await clock.run(4000);
+  C.mesh.start();
+  await clock.run(15000); // discover slot, join, gossip, member-member dial
+  assert.ok(B.mesh._openLinks().some((l) => l.isMaster), 'B linked to the slot');
+  assert.ok(C.mesh._openLinks().some((l) => l.isMaster), 'C linked to the slot');
+  assert.ok(B.mesh.links.has('c'.repeat(32)) && B.mesh._openLinks().some((l) => l.id === 'c'.repeat(32)), 'B linked directly to C');
+  assert.ok(C.mesh.links.has('b'.repeat(32)) && C.mesh._openLinks().some((l) => l.id === 'b'.repeat(32)), 'C linked directly to B');
+  // With the full mesh, a member's broadcast reaches the other member directly.
+  B.mesh.broadcast('from-B');
+  await clock.run(200);
+  assert.deepEqual(got, [['C', 'from-B']]);
+  A.mesh.stop(); B.mesh.stop(); C.mesh.stop();
+});
+
 test('member id includes the room tag slice (two meetings never collide)', () => {
   const clock = new AsyncClock();
   const cloud = new FakeCloud(clock);
