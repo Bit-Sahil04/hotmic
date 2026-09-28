@@ -239,6 +239,31 @@ test('three devices form one full-mesh room (members link to each other)', async
   A.mesh.stop(); B.mesh.stop(); C.mesh.stop();
 });
 
+test('five devices converge to one full-mesh room (broadcast reaches all)', async () => {
+  const clock = new AsyncClock();
+  const cloud = new FakeCloud(clock);
+  const IDS = ['a', 'b', 'c', 'd', 'e'].map((ch) => ch.repeat(32));
+  const got = IDS.map(() => []);
+  const meshes = IDS.map((id, i) => mkMesh(cloud, id, { onData: (d) => got[i].push(d) }));
+  // staggered joins, like people drifting into the call
+  for (let i = 0; i < meshes.length; i++) {
+    meshes[i].mesh.start();
+    await clock.run(2500);
+  }
+  await clock.run(30000); // discovery + gossip cycles for the full mesh
+  for (let i = 0; i < meshes.length; i++) {
+    assert.equal(meshes[i].mesh._openLinks().length, meshes.length - 1, `device ${i} linked to all others`);
+    assert.equal(meshes[i].mesh.status().state, 'up');
+  }
+  meshes[meshes.length - 1].mesh.broadcast('from-E');
+  await clock.run(300);
+  for (let i = 0; i < meshes.length - 1; i++) {
+    assert.deepEqual(got[i], ['from-E'], `device ${i} heard the broadcast`);
+  }
+  assert.equal(got[meshes.length - 1].length, 0, 'sender does not hear itself');
+  for (const m of meshes) m.mesh.stop();
+});
+
 test('member id includes the room tag slice (two meetings never collide)', () => {
   const clock = new AsyncClock();
   const cloud = new FakeCloud(clock);
